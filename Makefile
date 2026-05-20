@@ -1,4 +1,4 @@
-# CapyUI Makefile — 0.7.2 (alpha.243)
+# CapyUI Makefile — 0.7.3 (alpha.243)
 #
 # CapyUI owns and publishes its own capypkg modules. The build does NOT
 # touch CapyOS sources. After the alpha.241 migration the desktop session
@@ -8,11 +8,9 @@
 #   org.capyos.ui.widget-core      — widget primitives
 #   org.capyos.ui.desktop-session  — desktop + window mgr + apps
 #
-# Asset naming is intentionally version-less so consumers can fetch the
-# latest GitHub Release via the stable redirect:
-#   https://github.com/<owner>/<repo>/releases/latest/download/<asset>
-# The semantic `version=` field in each .manifest is still taken from the
-# VERSION file so capypkg can decide whether an upgrade is needed.
+# Asset naming is intentionally version-less inside each GitHub Release, but
+# manifests use versioned release URLs so the CapyOS kernel downloader does
+# not depend on the extra /releases/latest redirect before each payload.
 
 CC ?= cc
 CFLAGS ?= -std=c11 -Wall -Wextra -Werror -pedantic -O2 -g
@@ -33,7 +31,8 @@ SRC_DESKTOP_SESSION := src/desktop/*.c src/window/*.c src/apps/*.c
 CAPY_PKG_DIR := $(BUILD_DIR)/capypkg
 PUBLISH_OWNER ?= henriquefarisco
 PUBLISH_REPO ?= CapyUI
-PUBLISH_URL_BASE ?= https://github.com/$(PUBLISH_OWNER)/$(PUBLISH_REPO)/releases/latest/download
+PUBLISH_TAG ?= v$(VERSION)
+PUBLISH_URL_BASE ?= https://github.com/$(PUBLISH_OWNER)/$(PUBLISH_REPO)/releases/download/$(PUBLISH_TAG)
 
 WIDGET_PKG_NAME := org.capyos.ui.widget-core
 WIDGET_PKG_SUMMARY := CapyUI portable widget primitives (widget + layout + display-list)
@@ -70,14 +69,14 @@ test: $(TEST_BIN)
 lint:
 	$(CC) $(CPPFLAGS) $(CFLAGS) -fsyntax-only $(SRC_WIDGET)
 	git diff --check
-	test "$(VERSION)" = "0.7.2"
+	test "$(VERSION)" = "0.7.3"
 
 security:
 	$(CC) $(CPPFLAGS) $(CFLAGS) -D_FORTIFY_SOURCE=2 -fstack-protector-strong -fPIE -fsyntax-only $(SRC_WIDGET)
 
 version-check:
-	test "$(VERSION)" = "0.7.2"
-	grep -q "Version: 0.7.2" README.md
+	test "$(VERSION)" = "0.7.3"
+	grep -q "Version: 0.7.3" README.md
 
 validate: lint security test version-check
 

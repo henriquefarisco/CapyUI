@@ -2,8 +2,7 @@ name: Release Artifacts
 
 # Two deploy lanes:
 #  - Every push to main rebuilds the capypkg modules and overwrites the
-#    rolling `latest` GitHub Release (so the wizard's
-#    /releases/latest/download/ URLs always serve fresh assets).
+#    rolling `latest` GitHub Release.
 #  - A semver tag (v1.2.3) cuts a frozen release for that tag.
 on:
   push:
@@ -90,8 +89,8 @@ jobs:
             Automated capypkg release for `${{ steps.tag.outputs.name }}` built
             from commit ${{ github.sha }} on `${{ github.ref_name }}`.
 
-            Consumers should fetch assets via the stable redirect:
-              https://github.com/${{ github.repository }}/releases/latest/download/modules-index.txt
+            Consumers should fetch the index via the semver release tag:
+              https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.name }}/modules-index.txt
           prerelease: ${{ steps.tag.outputs.prerelease }}
           make_latest: ${{ steps.tag.outputs.make_latest }}
           files: |

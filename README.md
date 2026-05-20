@@ -1,6 +1,6 @@
 # CapyUI
 
-Version: 0.7.2
+Version: 0.7.3
 
 CapyUI owns portable widget primitives and interaction contracts for CapyOS services.
 
@@ -36,10 +36,10 @@ make package
 - `org.capyos.ui.desktop-session.manifest`
 - `modules-index.txt`
 
-Asset filenames are intentionally version-less so that consumers can pull them via GitHub's stable redirect:
+Asset filenames are intentionally version-less inside each GitHub Release. The published `modules-index.txt` uses tag-pinned payload URLs:
 
 ```
-https://github.com/<owner>/CapyUI/releases/latest/download/modules-index.txt
+https://github.com/<owner>/CapyUI/releases/download/v0.7.3/modules-index.txt
 ```
 
 The semantic `version=` field inside each `.manifest` still comes from the `VERSION` file in this repo, so `capypkg` knows when to upgrade.
@@ -54,6 +54,6 @@ Every push to `main` triggers `.github/workflows/release-artifacts.yml`, which:
 2. moves the rolling `latest` git tag to the current commit,
 3. republishes the GitHub Release `latest` with the new `.bin/.manifest/modules-index.txt` assets and marks it as the latest release.
 
-The CapyOS first-boot wizard reads the index through `https://github.com/<owner>/CapyUI/releases/latest/download/modules-index.txt`, so users always install whatever CapyUI most recently published.
+CapyOS first-boot releases should pin the index URL to a semver release tag, for example `https://github.com/<owner>/CapyUI/releases/download/v0.7.3/modules-index.txt`. This avoids an extra GitHub `latest` redirect during kernel-space module installation.
 
 To freeze a semver release without affecting the rolling channel, push a `v*` tag (for example `v0.7.1`). The same workflow handles tag-triggered runs as standalone frozen releases.
