@@ -1,4 +1,4 @@
-# CapyUI Makefile — 0.7.0 (alpha.241)
+# CapyUI Makefile — 0.7.2 (alpha.243)
 #
 # Since 0.7.0 CapyUI publishes TWO capypkg modules:
 #   org.capyos.ui.widget-core      — widget primitives (unchanged since 0.6)
@@ -75,14 +75,14 @@ test: $(TEST_BIN)
 lint:
 	$(CC) $(CPPFLAGS) $(CFLAGS) -fsyntax-only $(SRC_WIDGET)
 	git diff --check
-	test "$(VERSION)" = "0.7.1"
+	test "$(VERSION)" = "0.7.2"
 
 security:
 	$(CC) $(CPPFLAGS) $(CFLAGS) -D_FORTIFY_SOURCE=2 -fstack-protector-strong -fPIE -fsyntax-only $(SRC_WIDGET)
 
 version-check:
-	test "$(VERSION)" = "0.7.1"
-	grep -q "Version: 0.7.1" README.md
+	test "$(VERSION)" = "0.7.2"
+	grep -q "Version: 0.7.2" README.md
 
 validate: lint security test version-check
 

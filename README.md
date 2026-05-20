@@ -1,6 +1,6 @@
 # CapyUI
 
-Version: 0.7.1
+Version: 0.7.2
 
 CapyUI owns portable widget primitives and interaction contracts for CapyOS services.
 
