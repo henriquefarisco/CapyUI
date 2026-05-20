@@ -132,11 +132,6 @@ static int desktop_update_tray(struct desktop_session *ds) {
   return taskbar_update_tray(&ds->taskbar, tray);
 }
 
-static int desktop_overlay_active(struct desktop_session *ds) {
-  return inline_prompt_is_open() || context_menu_is_open() ||
-         (ds && ds->taskbar.menu_open);
-}
-
 static void desktop_sample_dispatcher_health(struct desktop_session *ds) {
   if (!ds) return;
   if (gui_window_dispatcher_health_snapshot(&ds->dispatcher_health)) {
