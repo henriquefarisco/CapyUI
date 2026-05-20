@@ -4,12 +4,10 @@
 #   org.capyos.ui.widget-core      — widget primitives (unchanged since 0.6)
 #   org.capyos.ui.desktop-session  — desktop + window mgr + apps (NEW)
 #
-# The desktop-session payload is only built when the corresponding src
-# subtrees (src/desktop, src/window, src/apps) are present in this
-# checkout. That subtree is populated by the migrate_to_capyui.py
-# helper that ships in the sibling CapyOS repo. Before that helper
-# runs, this Makefile still builds and publishes just the widget-core
-# module (lint/test/security all keep working).
+# The desktop-session payload is built from migrated CapyUI subtrees
+# when present, otherwise from the sibling CapyOS fallback selected by
+# CAPYOS_DIR. This keeps manual deploys working while source ownership
+# finishes moving to CapyUI.
 
 CC ?= cc
 CFLAGS ?= -std=c11 -Wall -Wextra -Werror -pedantic -O2 -g
@@ -24,8 +22,9 @@ VERSION := $(shell cat VERSION)
 SRC_WIDGET := src/widget/capy_widget.c src/widget/capy_layout.c src/widget/capy_display_list.c
 TEST_BIN := $(BUILD_DIR)/test_widget_contracts
 
-# Desktop-session sources (present only after migrate_to_capyui.py runs).
+# Desktop-session sources, with CapyOS fallback during migration.
 DESKTOP_SUBTREE_PRESENT := $(wildcard src/desktop/desktop_runtime.c)
+CAPYOS_DESKTOP_FALLBACK_PRESENT := $(wildcard $(CAPYOS_DIR)/src/gui/desktop/desktop_runtime.c)
 CAPYOS_HEADERS_PRESENT := $(wildcard $(CAPYOS_DIR)/include/gui/desktop.h)
 SRC_DESKTOP_SESSION := src/desktop/*.c src/window/*.c src/apps/*.c
 DESKTOP_SESSION_CPPFLAGS := \
@@ -56,9 +55,16 @@ DESKTOP_PKG_INSTALL_ROOT := /var/capypkg/$(DESKTOP_PKG_NAME)
 DESKTOP_PKG_DEPENDS := $(WIDGET_PKG_NAME)
 DESKTOP_PKG_BIN := $(CAPY_PKG_DIR)/$(DESKTOP_PKG_NAME)-$(VERSION).bin
 DESKTOP_PKG_MANIFEST := $(CAPY_PKG_DIR)/$(DESKTOP_PKG_NAME).manifest
+MODULES_INDEX := $(CAPY_PKG_DIR)/modules-index.txt
+
+ifeq ($(strip $(DESKTOP_SUBTREE_PRESENT)$(CAPYOS_DESKTOP_FALLBACK_PRESENT)),)
+MODULE_INDEX_MANIFESTS := $(WIDGET_PKG_MANIFEST)
+else
+MODULE_INDEX_MANIFESTS := $(WIDGET_PKG_MANIFEST) $(DESKTOP_PKG_MANIFEST)
+endif
 
 .PHONY: all clean lint security test validate version-check desktop-session-lint \
-        package package-widget-core package-desktop-session package-clean
+        package package-widget-core package-desktop-session package-index package-clean
 
 all: test
 
@@ -98,15 +104,14 @@ endif
 
 validate: desktop-session-lint
 
-# Default `package` target builds whichever modules are available
-# in this checkout. After running migrate_to_capyui.py from CapyOS,
-# both modules will be packaged; before that, only widget-core.
-ifeq ($(DESKTOP_SUBTREE_PRESENT),)
-package: package-widget-core
+# Default `package` target builds all modules available from either
+# the migrated CapyUI subtree or the CapyOS fallback.
+ifeq ($(strip $(DESKTOP_SUBTREE_PRESENT)$(CAPYOS_DESKTOP_FALLBACK_PRESENT)),)
+package: package-widget-core package-index
 	@echo "[package] desktop-session subtree absent; only widget-core packaged."
 	@echo "[package] run CapyOS/tools/scripts/migrate_to_capyui.py --apply to enable it."
 else
-package: package-widget-core package-desktop-session
+package: package-widget-core package-desktop-session package-index
 endif
 
 # ── widget-core (always available) ─────────────────────────────────────────
@@ -138,19 +143,28 @@ $(WIDGET_PKG_MANIFEST): $(WIDGET_PKG_BIN)
 	} > $@
 	@echo "[package] manifest: $@"
 
-# ── desktop-session (available only after migrate_to_capyui.py) ───────────
+# ── desktop-session (CapyUI subtree, or CapyOS fallback) ─────────────────
 package-desktop-session: $(DESKTOP_PKG_MANIFEST)
 
 $(DESKTOP_PKG_BIN): | $(BUILD_DIR)
-	@if [ -z "$(DESKTOP_SUBTREE_PRESENT)" ]; then \
-	  echo "[package] desktop-session source subtree missing; run migrate_to_capyui.py first." ; \
+	@if [ -z "$(DESKTOP_SUBTREE_PRESENT)$(CAPYOS_DESKTOP_FALLBACK_PRESENT)" ]; then \
+	  echo "[package] desktop-session source subtree missing; run migrate_to_capyui.py first or pass CAPYOS_DIR." ; \
 	  exit 2 ; \
 	fi
 	@mkdir -p $(CAPY_PKG_DIR)
-	@tar --format=ustar --owner=0 --group=0 --numeric-owner \
-	     --mtime='@0' --sort=name \
-	     -cf $@ src/desktop src/window src/apps docs VERSION 2>/dev/null || \
-	  tar -cf $@ src/desktop src/window src/apps docs VERSION
+	@if [ -n "$(DESKTOP_SUBTREE_PRESENT)" ]; then \
+	  tar --format=ustar --owner=0 --group=0 --numeric-owner \
+	      --mtime='@0' --sort=name \
+	      -cf $@ src/desktop src/window src/apps docs VERSION 2>/dev/null || \
+	    tar -cf $@ src/desktop src/window src/apps docs VERSION ; \
+	else \
+	  tar --format=ustar --owner=0 --group=0 --numeric-owner \
+	      --mtime='@0' --sort=name \
+	      -cf $@ -C $(CAPYOS_DIR) src/gui/desktop src/gui/window src/apps \
+	      -C $(CURDIR) docs VERSION 2>/dev/null || \
+	    tar -cf $@ -C $(CAPYOS_DIR) src/gui/desktop src/gui/window src/apps \
+	      -C $(CURDIR) docs VERSION ; \
+	fi
 	@echo "[package] $@"
 
 $(DESKTOP_PKG_MANIFEST): $(DESKTOP_PKG_BIN)
@@ -170,6 +184,13 @@ $(DESKTOP_PKG_MANIFEST): $(DESKTOP_PKG_BIN)
 	  echo "---" ; \
 	} > $@
 	@echo "[package] manifest: $@"
+
+package-index: $(MODULES_INDEX)
+
+$(MODULES_INDEX): $(MODULE_INDEX_MANIFESTS)
+	@mkdir -p $(CAPY_PKG_DIR)
+	@cat $(MODULE_INDEX_MANIFESTS) > $@
+	@echo "[package] index: $@"
 
 package-clean:
 	rm -rf $(CAPY_PKG_DIR)

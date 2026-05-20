@@ -21,3 +21,19 @@ make validate
 ```
 
 The release gate compiles with strict C warnings, runs widget contract tests, checks release metadata and verifies hardened compile flags.
+
+## capypkg release assets
+
+```sh
+make package
+```
+
+The package target emits the assets consumed by CapyOS first-boot module bootstrap under `build/capypkg/`:
+
+- `org.capyos.ui.widget-core-<version>.bin`
+- `org.capyos.ui.widget-core.manifest`
+- `org.capyos.ui.desktop-session-<version>.bin` (from migrated sources, or the `CAPYOS_DIR` fallback during transition)
+- `org.capyos.ui.desktop-session.manifest` (from migrated sources, or the `CAPYOS_DIR` fallback during transition)
+- `modules-index.txt`
+
+Use the `modules-index.txt` asset as the CapyOS wizard/profile repository URL. The individual `.manifest` files are publisher inputs and GitHub source archives are not capypkg payloads.

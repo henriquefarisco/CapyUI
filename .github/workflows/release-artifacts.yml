@@ -1,0 +1,70 @@
+name: Release Artifacts
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      publish_github_release:
+        description: "Publish package assets to GitHub Release"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+      release_tag:
+        description: "GitHub Release tag for manual publishing"
+        required: false
+        default: "v0.7.0"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Package capypkg modules
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout CapyUI
+        uses: actions/checkout@v4
+
+      - name: Checkout CapyOS headers
+        uses: actions/checkout@v4
+        with:
+          repository: henriquefarisco/CapyOS
+          path: CapyOS
+          ref: main
+
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y build-essential make
+
+      - name: Validate and package
+        run: |
+          make validate CAPYOS_DIR=CapyOS
+          make package CAPYOS_DIR=CapyOS
+
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: capyui-capypkg-${{ github.run_id }}
+          path: |
+            build/capypkg/*.bin
+            build/capypkg/*.manifest
+            build/capypkg/modules-index.txt
+          if-no-files-found: error
+
+      - name: Publish GitHub Release assets
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.publish_github_release == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || inputs.release_tag }}
+          files: |
+            build/capypkg/*.bin
+            build/capypkg/*.manifest
+            build/capypkg/modules-index.txt
+          generate_release_notes: true
