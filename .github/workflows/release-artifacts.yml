@@ -1,27 +1,28 @@
 name: Release Artifacts
 
+# Two deploy lanes:
+#  - Every push to main rebuilds the capypkg modules and overwrites the
+#    rolling `latest` GitHub Release (so the wizard's
+#    /releases/latest/download/ URLs always serve fresh assets).
+#  - A semver tag (v1.2.3) cuts a frozen release for that tag.
 on:
   push:
-    tags:
-      - "v*"
+    branches: [main]
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
-      publish_github_release:
-        description: "Publish package assets to GitHub Release"
-        required: false
-        default: "false"
-        type: choice
-        options:
-          - "false"
-          - "true"
       release_tag:
-        description: "GitHub Release tag for manual publishing"
+        description: "GitHub Release tag to publish (defaults to 'latest')"
         required: false
-        default: "v0.7.0"
+        default: "latest"
         type: string
 
 permissions:
   contents: read
+
+concurrency:
+  group: capyui-release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   package:
@@ -32,21 +33,16 @@ jobs:
     steps:
       - name: Checkout CapyUI
         uses: actions/checkout@v4
-
-      - name: Checkout CapyOS headers
-        uses: actions/checkout@v4
         with:
-          repository: henriquefarisco/CapyOS
-          path: CapyOS
-          ref: main
+          fetch-depth: 0
 
       - name: Install toolchain
         run: sudo apt-get update && sudo apt-get install -y build-essential make
 
       - name: Validate and package
         run: |
-          make validate CAPYOS_DIR=CapyOS
-          make package CAPYOS_DIR=CapyOS
+          make validate
+          make package
 
       - name: Upload package artifacts
         uses: actions/upload-artifact@v4
@@ -58,13 +54,47 @@ jobs:
             build/capypkg/modules-index.txt
           if-no-files-found: error
 
-      - name: Publish GitHub Release assets
-        if: startsWith(github.ref, 'refs/tags/v') || inputs.publish_github_release == 'true'
+      - name: Resolve target release tag
+        id: tag
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "name=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "make_latest=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=${{ inputs.release_tag || 'latest' }}" >> "$GITHUB_OUTPUT"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "make_latest=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Refresh rolling `latest` tag
+        if: github.ref_type != 'tag' && steps.tag.outputs.name == 'latest'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Move (or create) the rolling `latest` tag to the current commit
+          # before action-gh-release publishes against it. softprops/action
+          # would otherwise create a tag pointing at the wrong commit on
+          # rerun.
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -f latest "$GITHUB_SHA"
+          git push -f origin refs/tags/latest
+
+      - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || inputs.release_tag }}
+          tag_name: ${{ steps.tag.outputs.name }}
+          name: ${{ steps.tag.outputs.name == 'latest' && 'CapyUI rolling latest' || format('CapyUI {0}', steps.tag.outputs.name) }}
+          body: |
+            Automated capypkg release for `${{ steps.tag.outputs.name }}` built
+            from commit ${{ github.sha }} on `${{ github.ref_name }}`.
+
+            Consumers should fetch assets via the stable redirect:
+              https://github.com/${{ github.repository }}/releases/latest/download/modules-index.txt
+          prerelease: ${{ steps.tag.outputs.prerelease }}
+          make_latest: ${{ steps.tag.outputs.make_latest }}
           files: |
             build/capypkg/*.bin
             build/capypkg/*.manifest
             build/capypkg/modules-index.txt
-          generate_release_notes: true
