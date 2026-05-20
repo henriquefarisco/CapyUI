@@ -62,6 +62,7 @@ $(BUILD_DIR):
 
 $(TEST_BIN): $(SRC_WIDGET) tests/test_widget_contracts.c | $(BUILD_DIR)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -Isrc/widget $(SRC_WIDGET) tests/test_widget_contracts.c $(LDFLAGS) -o $@
+	chmod 755 $@
 
 test: $(TEST_BIN)
 	$(TEST_BIN)
@@ -69,14 +70,14 @@ test: $(TEST_BIN)
 lint:
 	$(CC) $(CPPFLAGS) $(CFLAGS) -fsyntax-only $(SRC_WIDGET)
 	git diff --check
-	test "$(VERSION)" = "0.7.0"
+	test "$(VERSION)" = "0.7.1"
 
 security:
 	$(CC) $(CPPFLAGS) $(CFLAGS) -D_FORTIFY_SOURCE=2 -fstack-protector-strong -fPIE -fsyntax-only $(SRC_WIDGET)
 
 version-check:
-	test "$(VERSION)" = "0.7.0"
-	grep -q "Version: 0.7.0" README.md
+	test "$(VERSION)" = "0.7.1"
+	grep -q "Version: 0.7.1" README.md
 
 validate: lint security test version-check
 
