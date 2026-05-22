@@ -29,8 +29,17 @@ int capy_widget_measure(struct capy_widget *root, uint32_t avail_w,
   }
   w = capy_layout_clamp_u32(avail_w, root->layout.c.min_w, root->layout.c.max_w);
   h = capy_layout_clamp_u32(avail_h, root->layout.c.min_h, root->layout.c.max_h);
+  /* v0.15 measure cache: skip the write + version bump when neither the
+   * inputs nor the dirty flag changed since the last measure. Same widget,
+   * same available bounds, no invalidate → identical layout_version. */
+  if (!root->layout_dirty && root->bounds.width == w &&
+      root->bounds.height == h) {
+    return 0;
+  }
   root->bounds.width = w;
   root->bounds.height = h;
+  root->layout_dirty = 0u;
+  ++root->layout_version;
   return 0;
 }
 
@@ -85,7 +94,6 @@ static void capy_layout_arrange_stack(struct capy_widget *root, int32_t ix,
       ch->bounds.height = cross;
     }
     cursor += (int32_t)main_sz + (int32_t)c->gap;
-    capy_widget_arrange(ch);
   }
 }
 
@@ -121,7 +129,6 @@ static void capy_layout_arrange_grid(struct capy_widget *root, int32_t ix,
     ch->bounds.y = iy + (int32_t)r * (cell_h + (int32_t)c->gap);
     ch->bounds.width = (uint32_t)cell_w;
     ch->bounds.height = (uint32_t)cell_h;
-    capy_widget_arrange(ch);
   }
 }
 
@@ -147,8 +154,16 @@ static void capy_layout_arrange_flow(struct capy_widget *root, int32_t ix,
     if (ch->bounds.height > line_h) {
       line_h = ch->bounds.height;
     }
-    capy_widget_arrange(ch);
   }
+}
+
+/* Since 0.13: mirror x of a child within the inner content rect [ix, ix+iw].
+ * new_right = ix + iw - (old_x - ix), so new_x = 2*ix + iw - old_x - width. */
+static void capy_layout_mirror_child_x(struct capy_widget *ch, int32_t ix,
+                                       int32_t iw) {
+  int32_t old_x = ch->bounds.x;
+  ch->bounds.x =
+      (int32_t)(2 * ix) + iw - old_x - (int32_t)ch->bounds.width;
 }
 
 int capy_widget_arrange(struct capy_widget *root) {
@@ -184,10 +199,20 @@ int capy_widget_arrange(struct capy_widget *root) {
       break;
     case CAPY_LAYOUT_NONE:
     default:
-      for (i = 0u; i < root->child_count; ++i) {
-        capy_widget_arrange(root->children[i]);
-      }
+      /* No automatic bounds assignment; children retain their pre-existing
+       * bounds. The mirror + recursion pass below still runs uniformly. */
       break;
+  }
+  /* v0.13: mirror direct children when rtl=1. The mirror is computed before
+   * recursing so descendants are arranged relative to the final parent x. */
+  if (c->rtl) {
+    for (i = 0u; i < root->child_count; ++i) {
+      capy_layout_mirror_child_x(root->children[i], ix, iw);
+    }
+  }
+  /* Recurse into children with finalized bounds. */
+  for (i = 0u; i < root->child_count; ++i) {
+    capy_widget_arrange(root->children[i]);
   }
   return 0;
 }

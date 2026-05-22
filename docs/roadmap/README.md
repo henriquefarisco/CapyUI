@@ -7,8 +7,9 @@ Roadmap segregado por horizonte e área para tracking absoluto da biblioteca por
 - **Estado atual:** `STATUS.md` (versão entregue, próxima fatia, bloqueios).
 - **Checkpoint v0.6.0 (curto prazo completo):** `CHECKPOINT-v0.6.0.md` — patch consolidado, métricas, status do release gate.
 - **Tracking absoluto:** `tracking/ABSOLUTE.md`, `BLOCKERS.md`, `METRICS.md`, `DECISIONS.md`, `CHANGELOG.md`.
-- **Curto prazo (0-3 meses, v0.3 → v0.6):** `short-term/` — **TODAS ENTREGUES**.
-- **Médio prazo (3-9 meses, v0.7 → v1.0):** `medium-term/` — bloqueado por Etapa 4 CapyOS.
+- **Curto prazo (v0.1 → v0.6):** `short-term/` — **TODAS ENTREGUES**.
+- **Migração desktop-session (v0.7.0 → v0.7.3):** sessão de desktop, window manager e built-in apps movidos do fallback in-tree CapyOS para este repo; `capy-ui-desktop-session` v1 publicada.
+- **Médio prazo (v0.8 → v1.0):** `medium-term/` — **COMPLETO** (v0.8 compositor diff, v0.9 texto/fontes host, v0.10 input plumbing, v0.11 a11y tree, v0.13 i18n+RTL, v0.14 theming UX, v0.15 performance tier 1, **v1.0 CONGELAMENTO**). Apenas `v0.7 adapter` (CapyOS-side, metadata-only sobre 1.x) e `v0.12 shell` continuam dependentes de Etapas CapyOS.
 - **Longo prazo (9+ meses, v1.1 → v3.0):** `long-term/`.
 - **Contratos de ABI:** `contracts/`.
 - **Dependências e compatibilidade:** `dependencies/`.

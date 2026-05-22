@@ -1,7 +1,7 @@
 # Contrato: Compositor + dirty rects
 
-**Since:** 0.8.0 (planned)
-**Status:** planned
+**Since:** 0.8.0 (delivered)
+**Status:** delivered (CapyUI side); CapyOS compositor consumer ainda evolui sob Etapa 4
 **Fatia:** `medium-term/v0.8-compositor-host.md`
 
 ## Definição
@@ -53,4 +53,4 @@ int capy_widget_diff(struct capy_display_list *prev,
 
 | Versão | Mudança |
 |--------|---------|
-| 0.8.0 (planned) | Introdução de diff + DIRTY_HINT |
+| 0.8.0 | Introdução de `capy_widget_diff` + op aditiva `CAPY_DL_DIRTY_HINT` (DL schema 2 → 3). Lado CapyUI entregue; consumidor compositor CapyOS segue trilha Etapa 4. |

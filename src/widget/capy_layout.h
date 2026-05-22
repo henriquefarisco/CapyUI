@@ -23,6 +23,11 @@ struct capy_layout_constraints {
   uint8_t pad_t;
   uint8_t pad_r;
   uint8_t pad_b;
+  /* Since 0.13: when non-zero, capy_widget_arrange mirrors the x-coordinate
+   * of every direct child within the inner content rect after the layout
+   * kind-specific pass. Vertical-only layouts are unaffected because the
+   * mirror is a no-op when iw covers the child width exactly. */
+  uint8_t rtl;
 };
 
 struct capy_layout_node {

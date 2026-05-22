@@ -1,4 +1,4 @@
-# CapyUI Makefile — 0.7.3 (alpha.243)
+# CapyUI Makefile — 2.13.0 (alpha.276) — ABI 2.x (login screen aditivo, fim da fase 2.x)
 #
 # CapyUI owns and publishes its own capypkg modules. The build does NOT
 # touch CapyOS sources. After the alpha.241 migration the desktop session
@@ -21,7 +21,7 @@ BUILD_DIR := build
 VERSION := $(shell cat VERSION)
 
 # Widget-core sources.
-SRC_WIDGET := src/widget/capy_widget.c src/widget/capy_layout.c src/widget/capy_display_list.c
+SRC_WIDGET := src/widget/capy_widget.c src/widget/capy_layout.c src/widget/capy_display_list.c src/widget/capy_dl_gpu.c src/widget/capy_widget_serialize.c
 TEST_BIN := $(BUILD_DIR)/test_widget_contracts
 
 # Desktop-session sources (owned by CapyUI after the alpha.241 migration).
@@ -69,14 +69,14 @@ test: $(TEST_BIN)
 lint:
 	$(CC) $(CPPFLAGS) $(CFLAGS) -fsyntax-only $(SRC_WIDGET)
 	git diff --check
-	test "$(VERSION)" = "0.7.3"
+	test "$(VERSION)" = "2.13.0"
 
 security:
 	$(CC) $(CPPFLAGS) $(CFLAGS) -D_FORTIFY_SOURCE=2 -fstack-protector-strong -fPIE -fsyntax-only $(SRC_WIDGET)
 
 version-check:
-	test "$(VERSION)" = "0.7.3"
-	grep -q "Version: 0.7.3" README.md
+	test "$(VERSION)" = "2.13.0"
+	grep -q "Version: 2.13.0" README.md
 
 validate: lint security test version-check
 
