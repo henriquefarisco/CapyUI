@@ -69,8 +69,10 @@ int file_manager_handle_drag_move(struct gui_window *win, int32_t screen_x,
     desktop_icons_clear_external_drop();
   }
   if (next_over != app->drag_over) {
+    int old_over = app->drag_over;
     app->drag_over = next_over;
-    compositor_invalidate(app->window->id);
+    fm_invalidate_row(app, old_over);
+    fm_invalidate_row(app, app->drag_over);
   }
   return 1;
 }
@@ -110,7 +112,8 @@ int file_manager_handle_mouse_up(struct gui_window *win, int32_t screen_x,
     return 1;
   }
   if (open_on_release && !moved) fm_open_entry(app, src);
-  if (app->window) compositor_invalidate(app->window->id);
+  fm_invalidate_row(app, src);
+  fm_invalidate_row(app, dst);
   return 1;
 }
 
@@ -133,8 +136,10 @@ int file_manager_preview_drop_path_at(int32_t screen_x, int32_t screen_y,
     next_over = row;
   }
   if (next_over != app->external_drag_over) {
+    int old_over = app->external_drag_over;
     app->external_drag_over = next_over;
-    compositor_invalidate(app->window->id);
+    fm_invalidate_row(app, old_over);
+    fm_invalidate_row(app, app->external_drag_over);
   }
   return 1;
 }
@@ -160,8 +165,9 @@ int file_manager_drop_path_at(int32_t screen_x, int32_t screen_y,
 
 void file_manager_clear_external_drop(void) {
   if (g_fm_open && g_fm.window && g_fm.external_drag_over != -1) {
+    int old_over = g_fm.external_drag_over;
     g_fm.external_drag_over = -1;
-    compositor_invalidate(g_fm.window->id);
+    fm_invalidate_row(&g_fm, old_over);
   }
 }
 
@@ -233,7 +239,7 @@ static void fm_ctx_pick(uint16_t action_id, void *ctx) {
                             "Create file: name exhausted",
                             "Crear archivo: nombres agotados"),
                       0x00F38BA8);
-        if (app->window) compositor_invalidate(app->window->id);
+        fm_invalidate_status_bar(app);
         return;
       }
       rc = vfs_create(path, VFS_MODE_FILE, NULL);
@@ -258,7 +264,7 @@ static void fm_ctx_pick(uint16_t action_id, void *ctx) {
                             "Create dir: name exhausted",
                             "Crear carpeta: nombres agotados"),
                       0x00F38BA8);
-        if (app->window) compositor_invalidate(app->window->id);
+        fm_invalidate_status_bar(app);
         return;
       }
       rc = vfs_create(path, VFS_MODE_DIR, NULL);
@@ -317,9 +323,10 @@ void file_manager_window_context_menu(struct gui_window *win, int32_t lx,
     int row_h = fm_row_height(font_default());
     int idx = app->scroll_offset + (ly - (FM_TOOLBAR_H + 4)) / row_h;
     if (idx >= 0 && idx < app->entry_count) {
+      int old_selected = app->selected;
       app->selected = idx;
       target_row = idx;
-      if (app->window) compositor_invalidate(app->window->id);
+      fm_invalidate_selection_change(app, old_selected, app->selected);
     }
   }
 

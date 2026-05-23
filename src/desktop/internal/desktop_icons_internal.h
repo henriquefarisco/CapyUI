@@ -67,5 +67,8 @@ void di_join(const char *dir, const char *name, char *out, uint32_t max);
 void di_icon_position(uint32_t idx, int32_t *out_x, int32_t *out_y);
 int  di_is_text(const char *name);
 void di_request_delete_selected(void);
+#if defined(CAPYOS_HAVE_CAPYUI_WIDGET)
+int desktop_icons_render_display_list(struct gui_surface *surface);
+#endif
 
 #endif /* GUI_DESKTOP_DESKTOP_ICONS_INTERNAL_H */

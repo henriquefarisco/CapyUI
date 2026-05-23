@@ -25,6 +25,117 @@
 #include <stddef.h>
 #include <stdint.h>
 
+static void taskbar_invalidate_local_rect(struct gui_window *win,
+                                          int32_t x, int32_t y,
+                                          uint32_t w, uint32_t h) {
+  struct gui_rect rect;
+  if (!win || w == 0u || h == 0u) return;
+  rect.x = x;
+  rect.y = y;
+  rect.width = w;
+  rect.height = h;
+  compositor_invalidate_rect(win->id, &rect);
+}
+
+static void taskbar_invalidate_menu_button(struct taskbar *tb) {
+  uint8_t scale = compositor_ui_scale();
+  uint32_t menu_w = 82u + 20u * (uint32_t)(scale - 1u);
+  if (!tb || !tb->window) return;
+  taskbar_invalidate_local_rect(tb->window, 4, 0, menu_w, TASKBAR_HEIGHT);
+}
+
+static int taskbar_menu_row_rect(struct taskbar *tb, int row,
+                                 struct gui_rect *rect) {
+  int32_t ey;
+  uint32_t recent_available;
+  const char *last = "";
+  uint32_t footer_h;
+  uint32_t visible_h;
+  int32_t list_top = (int32_t)TASKBAR_MENU_HEADER_HEIGHT;
+  int32_t list_bottom;
+  if (!tb || !tb->menu_popup || !rect || row < 0) return 0;
+  footer_h = taskbar_menu_footer_height(tb);
+  visible_h = taskbar_menu_current_height(tb);
+  list_bottom =
+      (int32_t)(visible_h > footer_h ? visible_h - footer_h : visible_h);
+  if ((uint32_t)row < tb->menu_entry_count &&
+      taskbar_menu_entry_is_session(tb, (uint32_t)row) &&
+      footer_h > 0u) {
+    rect->x = 0;
+    rect->y = list_bottom;
+    rect->width = tb->menu_popup->surface.width;
+    rect->height = footer_h;
+    return 1;
+  }
+  ey = (int32_t)TASKBAR_MENU_HEADER_HEIGHT - tb->menu_scroll_offset;
+  recent_available = taskbar_recent_available_count(tb);
+  if (recent_available > 0u) {
+    if (row == TASKBAR_MENU_ROW_RECENT_TOGGLE &&
+        ey >= list_top &&
+        ey + (int32_t)TASKBAR_MENU_ENTRY_HEIGHT <= list_bottom) {
+      rect->x = 0;
+      rect->y = ey;
+      rect->width = tb->menu_popup->surface.width;
+      rect->height = TASKBAR_MENU_ENTRY_HEIGHT;
+      return 1;
+    }
+    ey += TASKBAR_MENU_ENTRY_HEIGHT;
+  }
+  for (uint32_t i = 0; i < tb->menu_entry_count; i++) {
+    const char *group = NULL;
+    if (!taskbar_menu_entry_matches(tb, i)) continue;
+    group = taskbar_menu_group_label(tb, i);
+    if (!tb_streq(last, group)) {
+      ey += TASKBAR_MENU_CATEGORY_HEIGHT;
+      last = group;
+    }
+    if ((int)i == row &&
+        ey >= list_top &&
+        ey + (int32_t)TASKBAR_MENU_ENTRY_HEIGHT <= list_bottom) {
+      rect->x = 0;
+      rect->y = ey;
+      rect->width = tb->menu_popup->surface.width;
+      rect->height = TASKBAR_MENU_ENTRY_HEIGHT;
+      return 1;
+    }
+    ey += TASKBAR_MENU_ENTRY_HEIGHT;
+  }
+  return 0;
+}
+
+static int taskbar_recent_row_rect(struct taskbar *tb, int row,
+                                   struct gui_rect *rect) {
+  int32_t ey = 2;
+  if (!tb || !tb->recent_popup || !rect || !taskbar_row_is_recent(row)) {
+    return 0;
+  }
+  for (uint32_t i = 0; i < tb->recent_count; i++) {
+    if (!taskbar_recent_entry_matches(tb, i)) continue;
+    if (taskbar_recent_row(i) == row) {
+      rect->x = 0;
+      rect->y = ey;
+      rect->width = tb->recent_popup->surface.width;
+      rect->height = TASKBAR_MENU_ENTRY_HEIGHT;
+      return 1;
+    }
+    ey += TASKBAR_MENU_ENTRY_HEIGHT;
+  }
+  return 0;
+}
+
+static void taskbar_invalidate_menu_hover_row(struct taskbar *tb, int row) {
+  struct gui_rect rect;
+  if (taskbar_menu_row_rect(tb, row, &rect)) {
+    taskbar_invalidate_local_rect(tb->menu_popup, rect.x, rect.y,
+                                  rect.width, rect.height);
+  }
+  if (tb && tb->recent_popup && tb->recent_popup->visible &&
+      taskbar_recent_row_rect(tb, row, &rect)) {
+    taskbar_invalidate_local_rect(tb->recent_popup, rect.x, rect.y,
+                                  rect.width, rect.height);
+  }
+}
+
 void taskbar_toggle_menu(struct taskbar *tb) {
   if (!tb) return;
   tb->menu_open = !tb->menu_open;
@@ -75,7 +186,7 @@ void taskbar_toggle_menu(struct taskbar *tb) {
     }
   }
 
-  if (tb->window) compositor_invalidate(tb->window->id);
+  taskbar_invalidate_menu_button(tb);
 }
 
 static int taskbar_activate_menu_entry(struct taskbar *tb, int index) {
@@ -166,11 +277,14 @@ void taskbar_handle_menu_hover(struct taskbar *tb, int32_t screen_x,
     new_hover = taskbar_menu_entry_at(tb, screen_x - px, screen_y - py);
   }
   if (new_hover != tb->hover_entry) {
+    int old_hover = tb->hover_entry;
+    int old_active = old_hover >= 0 ? old_hover : tb->selected_entry;
+    int new_active;
     tb->hover_entry = new_hover;
     if (new_hover >= 0) tb->selected_entry = new_hover;
-    if (tb->menu_popup) compositor_invalidate(tb->menu_popup->id);
-    if (tb->recent_popup && tb->recent_popup->visible)
-      compositor_invalidate(tb->recent_popup->id);
+    new_active = tb->hover_entry >= 0 ? tb->hover_entry : tb->selected_entry;
+    taskbar_invalidate_menu_hover_row(tb, old_active);
+    taskbar_invalidate_menu_hover_row(tb, new_active);
     taskbar_refresh_recent_popup(tb);
   } else if (new_hover == TASKBAR_MENU_ROW_RECENT_TOGGLE ||
              taskbar_row_is_recent(new_hover)) {
@@ -210,17 +324,23 @@ int taskbar_handle_menu_key(struct taskbar *tb, uint32_t keycode, char ch) {
   uint32_t len = 0;
   if (!tb || !tb->menu_open) return 0;
   if (keycode == KEY_UP) {
+    int old_active =
+        tb->hover_entry >= 0 ? tb->hover_entry : tb->selected_entry;
     tb->selected_entry = taskbar_prev_match(tb, tb->selected_entry);
     tb->hover_entry = -1;
+    taskbar_invalidate_menu_hover_row(tb, old_active);
+    taskbar_invalidate_menu_hover_row(tb, tb->selected_entry);
     taskbar_hide_recent_popup(tb);
-    taskbar_refresh_menu_popup(tb);
     return 1;
   }
   if (keycode == KEY_DOWN) {
+    int old_active =
+        tb->hover_entry >= 0 ? tb->hover_entry : tb->selected_entry;
     tb->selected_entry = taskbar_next_match(tb, tb->selected_entry);
     tb->hover_entry = -1;
+    taskbar_invalidate_menu_hover_row(tb, old_active);
+    taskbar_invalidate_menu_hover_row(tb, tb->selected_entry);
     taskbar_hide_recent_popup(tb);
-    taskbar_refresh_menu_popup(tb);
     return 1;
   }
   if (ch == '\n' || ch == '\r' || keycode == '\n' || keycode == '\r') {

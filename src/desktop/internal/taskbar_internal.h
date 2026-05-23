@@ -49,6 +49,18 @@ void tb_fit_text(const struct font *f, const char *src, uint32_t max_width,
 void tb_draw_fit(struct gui_surface *s, const struct font *f, int32_t x,
                  int32_t y, uint32_t max_width, const char *text,
                  uint32_t color);
+#if defined(CAPYOS_HAVE_CAPYUI_WIDGET)
+int taskbar_render_display_list(struct taskbar *tb);
+void taskbar_display_list_reset(void);
+int taskbar_menu_render_display_list(struct gui_window *win);
+int taskbar_recent_render_display_list(struct gui_window *win);
+#else
+static inline int taskbar_render_display_list(struct taskbar *tb) {
+  (void)tb;
+  return -1;
+}
+static inline void taskbar_display_list_reset(void) {}
+#endif
 
 /* ── menu data-model helpers (taskbar_menu.c) ────────────────────────── */
 

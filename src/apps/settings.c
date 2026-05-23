@@ -104,12 +104,29 @@ const char *tab_label(enum settings_tab t) {
 
 /* ── status helper ───────────────────────────────────────────────────── */
 
+static void settings_invalidate_status_bar(struct settings_app *app) {
+  const struct font *f = font_default();
+  struct gui_rect rect;
+  int32_t status_y;
+  if (!app || !app->window || !f) return;
+  status_y = (app->window->surface.height > f->glyph_height + 6u)
+                 ? (int32_t)app->window->surface.height -
+                       (int32_t)f->glyph_height - 3
+                 : 0;
+  if (status_y >= (int32_t)app->window->surface.height) return;
+  rect.x = 0;
+  rect.y = status_y;
+  rect.width = app->window->surface.width;
+  rect.height = app->window->surface.height - (uint32_t)status_y;
+  compositor_invalidate_rect(app->window->id, &rect);
+}
+
 void settings_set_status(struct settings_app *app, const char *text,
                          uint32_t color) {
   if (!app) return;
   kstrcpy(app->status_text, sizeof(app->status_text), text ? text : "");
   app->status_color = color;
-  if (app->window) compositor_invalidate(app->window->id);
+  settings_invalidate_status_bar(app);
 }
 
 /* ── click-row infrastructure ────────────────────────────────────────── */
@@ -150,6 +167,7 @@ static void settings_cleanup(void) {
   }
   g_settings.window = NULL;
   g_settings_open = 0;
+  settings_display_list_reset();
 }
 
 static void settings_on_close(struct gui_window *win) {
@@ -181,6 +199,7 @@ static void settings_window_resize(struct gui_window *win,
   (void)h;
   if (!win || !win->user_data) return;
   settings_layout_tabs((struct settings_app *)win->user_data);
+  settings_display_list_reset();
   settings_paint((struct settings_app *)win->user_data);
 }
 

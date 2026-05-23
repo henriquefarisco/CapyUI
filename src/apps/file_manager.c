@@ -89,6 +89,83 @@ void fm_set_ok_status(struct file_manager_app *app, const char *text) {
   fm_set_status(app, text, 0x00A6E3A1);
 }
 
+static void fm_invalidate_rect(struct file_manager_app *app, int32_t x,
+                               int32_t y, uint32_t w, uint32_t h) {
+  struct gui_rect rect;
+  if (!app || !app->window || w == 0u || h == 0u) return;
+  rect.x = x;
+  rect.y = y;
+  rect.width = w;
+  rect.height = h;
+  compositor_invalidate_rect(app->window->id, &rect);
+}
+
+void fm_invalidate_row(struct file_manager_app *app, int row) {
+  const struct font *f = font_default();
+  int32_t row_h;
+  int32_t y;
+  int32_t status_y;
+  if (!app || !app->window || row < app->scroll_offset) return;
+  if (!f) return;
+  row_h = fm_row_height(f);
+  if (row_h <= 0) return;
+  y = FM_TOOLBAR_H + 4 + (row - app->scroll_offset) * row_h;
+  status_y = (app->window->surface.height > f->glyph_height + 2u)
+                 ? (int32_t)app->window->surface.height -
+                       (int32_t)f->glyph_height - 2
+                 : (int32_t)app->window->surface.height;
+  if (y + row_h > status_y) return;
+  fm_invalidate_rect(app, 0, y, app->window->surface.width, (uint32_t)row_h);
+}
+
+static void fm_invalidate_list_area(struct file_manager_app *app) {
+  const struct font *f = font_default();
+  int32_t list_y = FM_TOOLBAR_H + 4;
+  int32_t status_y;
+  if (!app || !app->window || !f) return;
+  status_y = (app->window->surface.height > f->glyph_height + 2u)
+                 ? (int32_t)app->window->surface.height -
+                       (int32_t)f->glyph_height - 2
+                 : (int32_t)app->window->surface.height;
+  if (status_y <= list_y) return;
+  fm_invalidate_rect(app, 0, list_y, app->window->surface.width,
+                     (uint32_t)(status_y - list_y));
+}
+
+void fm_invalidate_status_bar(struct file_manager_app *app) {
+  const struct font *f = font_default();
+  int32_t status_y;
+  if (!app || !app->window || !f) return;
+  status_y = (app->window->surface.height > f->glyph_height + 2u)
+                 ? (int32_t)app->window->surface.height -
+                       (int32_t)f->glyph_height - 2
+                 : (int32_t)app->window->surface.height;
+  if (status_y >= (int32_t)app->window->surface.height) return;
+  fm_invalidate_rect(app, 0, status_y, app->window->surface.width,
+                     app->window->surface.height - (uint32_t)status_y);
+}
+
+static void fm_invalidate_delete_button(struct file_manager_app *app) {
+  int32_t toolbar_x = 0;
+  int32_t button_w = 0;
+  int32_t button_gap = 0;
+  int32_t x;
+  if (!app || !app->window) return;
+  fm_toolbar_layout(app->window->surface.width, &toolbar_x,
+                    &button_w, &button_gap);
+  if (button_w <= 0) return;
+  x = toolbar_x + (button_w + button_gap) * 5;
+  fm_invalidate_rect(app, x, FM_BUTTON_Y, (uint32_t)button_w, FM_BUTTON_H);
+}
+
+void fm_invalidate_selection_change(struct file_manager_app *app,
+                                    int old_selected, int new_selected) {
+  if (old_selected == new_selected) return;
+  fm_invalidate_row(app, old_selected);
+  fm_invalidate_row(app, new_selected);
+  fm_invalidate_delete_button(app);
+}
+
 /* ── filesystem operations ───────────────────────────────────────────── */
 
 void fm_open_entry(struct file_manager_app *app, int idx) {
@@ -107,7 +184,7 @@ void fm_open_entry(struct file_manager_app *app, int idx) {
     fm_set_ok_status(app, APP_T("Arquivo aberto no editor",
                                 "File opened in editor",
                                 "Archivo abierto en el editor"));
-    if (app->window) compositor_invalidate(app->window->id);
+    fm_invalidate_status_bar(app);
   }
 }
 
@@ -281,7 +358,7 @@ static void fm_delete_confirm_submit(const char *text, void *ctx) {
   if (!text || !kstreq(text, "DELETE")) {
     fm_set_status(app, APP_T("Cancelado", "Cancelled", "Cancelado"),
                   0x00CDD6F4);
-    if (app->window) compositor_invalidate(app->window->id);
+    fm_invalidate_status_bar(app);
     return;
   }
   (void)fm_delete_path_now(app, g_fm_delete_path, g_fm_delete_mode);
@@ -370,6 +447,7 @@ const char *fm_initial_path(void) {
 void file_manager_cleanup(void) {
   g_fm.window = NULL;
   g_fm_open = 0;
+  file_manager_display_list_reset();
 }
 
 static void file_manager_on_close(struct gui_window *win) {
@@ -399,6 +477,7 @@ static void file_manager_window_resize(struct gui_window *win, uint32_t w,
   (void)w;
   (void)h;
   if (!win || !win->user_data) return;
+  file_manager_display_list_reset();
   file_manager_paint((struct file_manager_app *)win->user_data);
 }
 
@@ -432,19 +511,21 @@ static void file_manager_window_mouse(struct gui_window *win, int32_t x, int32_t
 }
 
 static void file_manager_window_scroll(struct gui_window *win, int32_t delta) {
+  int old_offset;
   if (!win || !win->user_data) return;
   struct file_manager_app *app = (struct file_manager_app *)win->user_data;
+  old_offset = app->scroll_offset;
   if (delta > 0 && app->scroll_offset > 0) {
     app->scroll_offset--;
-    compositor_invalidate(app->window->id);
   } else if (delta < 0 && app->scroll_offset < app->entry_count - 1) {
     app->scroll_offset++;
-    compositor_invalidate(app->window->id);
   }
   if (app->scroll_offset >= app->entry_count)
     app->scroll_offset = (app->entry_count > 0) ? app->entry_count - 1 : 0;
   if (app->scroll_offset < 0)
     app->scroll_offset = 0;
+  if (app->scroll_offset != old_offset)
+    fm_invalidate_list_area(app);
 }
 
 void file_manager_navigate(struct file_manager_app *app, const char *path) {
@@ -560,7 +641,7 @@ void file_manager_handle_click(struct file_manager_app *app, int32_t x, int32_t 
                             "Create file: name exhausted",
                             "Crear archivo: nombres agotados"),
                       0x00F38BA8);
-        if (app->window) compositor_invalidate(app->window->id);
+        fm_invalidate_status_bar(app);
         return;
       }
       rc = vfs_create(path, VFS_MODE_FILE, NULL);
@@ -586,7 +667,7 @@ void file_manager_handle_click(struct file_manager_app *app, int32_t x, int32_t 
                             "Create dir: name exhausted",
                             "Crear carpeta: nombres agotados"),
                       0x00F38BA8);
-        if (app->window) compositor_invalidate(app->window->id);
+        fm_invalidate_status_bar(app);
         return;
       }
       rc = vfs_create(path, VFS_MODE_DIR, NULL);
@@ -619,6 +700,7 @@ void file_manager_handle_click(struct file_manager_app *app, int32_t x, int32_t 
   if (y < FM_TOOLBAR_H + 4) return;
   int idx = fm_row_at(app, x, y);
   if (idx >= 0) {
+    int old_selected = app->selected;
     app->drag_active = 1;
     app->drag_source = idx;
     app->drag_over = -1;
@@ -627,6 +709,6 @@ void file_manager_handle_click(struct file_manager_app *app, int32_t x, int32_t 
     app->drag_start_x = app->window ? app->window->frame.x + x : x;
     app->drag_start_y = app->window ? app->window->frame.y + y : y;
     app->selected = idx;
-    if (app->window) compositor_invalidate(app->window->id);
+    fm_invalidate_selection_change(app, old_selected, app->selected);
   }
 }

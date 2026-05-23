@@ -5,9 +5,21 @@
 #include "util/kstring.h"
 #include "memory/kmem.h"
 #include <stddef.h>
+#if defined(CAPYOS_HAVE_CAPYUI_WIDGET)
+#include "internal/app_display_list_bridge.h"
+#endif
 
 static struct calculator_app g_calc;
 static int g_calc_open = 0;
+
+#if defined(CAPYOS_HAVE_CAPYUI_WIDGET)
+#define CALCULATOR_DL_CMD_CAP 64u
+#define CALCULATOR_DL_TEXT_CAP 128u
+
+static struct capy_dl_cmd g_calc_dl_cmds[APP_DISPLAY_LIST_BRIDGE_FRAME_COUNT][CALCULATOR_DL_CMD_CAP];
+static char g_calc_dl_text[APP_DISPLAY_LIST_BRIDGE_FRAME_COUNT][CALCULATOR_DL_TEXT_CAP];
+static struct app_display_list_bridge g_calc_dl_bridge;
+#endif
 
 static void calculator_cleanup(void) {
   /* Free all widgets before clearing the struct */
@@ -17,6 +29,9 @@ static void calculator_cleanup(void) {
   }
   g_calc.window = NULL;
   g_calc_open = 0;
+#if defined(CAPYOS_HAVE_CAPYUI_WIDGET)
+  app_display_list_bridge_reset(&g_calc_dl_bridge);
+#endif
 }
 
 static void calculator_on_close(struct gui_window *win) {
@@ -43,6 +58,15 @@ static int64_t calc_eval(const char *expr, int len) {
     }
   }
   return result;
+}
+
+static void calculator_invalidate_display(struct calculator_app *app) {
+  if (!app || !app->window) return;
+  if (app->display) {
+    compositor_invalidate_rect(app->window->id, &app->display->bounds);
+  } else {
+    compositor_invalidate(app->window->id);
+  }
 }
 
 static void on_calc_button(struct widget *w, void *data) {
@@ -88,8 +112,43 @@ static void on_calc_button(struct widget *w, void *data) {
   if (app->display) {
     widget_set_text(app->display, app->expr[0] ? app->expr : "0");
   }
-  if (app->window) compositor_invalidate(app->window->id);
+  calculator_invalidate_display(app);
 }
+
+#if defined(CAPYOS_HAVE_CAPYUI_WIDGET)
+static void calculator_dl_init_once(void) {
+  if (g_calc_dl_bridge.initialized) return;
+  app_display_list_bridge_init(&g_calc_dl_bridge,
+                               g_calc_dl_cmds[0],
+                               g_calc_dl_cmds[1],
+                               CALCULATOR_DL_CMD_CAP,
+                               g_calc_dl_text[0],
+                               g_calc_dl_text[1],
+                               CALCULATOR_DL_TEXT_CAP);
+}
+
+static int calculator_emit_display_list(void *producer, struct capy_display_list *out) {
+  struct calculator_app *app = (struct calculator_app *)producer;
+  const struct gui_theme_palette *theme = compositor_theme();
+  if (!app || !app->window || !out) return -1;
+  out->count = 0u;
+  out->text_used = 0u;
+  if (app_display_list_emit_rect(out, 0, 0, app->window->surface.width,
+                                 app->window->surface.height, theme->window_bg) != 0) return -1;
+  if (app_display_list_emit_widget(out, app->display) != 0) return -1;
+  for (int i = 0; i < 16; ++i) {
+    if (app_display_list_emit_widget(out, app->buttons[i]) != 0) return -1;
+  }
+  return 0;
+}
+
+static int calculator_render_display_list(struct calculator_app *app) {
+  if (!app || !app->window) return -1;
+  calculator_dl_init_once();
+  return app_display_list_bridge_render_window(&g_calc_dl_bridge, app->window,
+                                               calculator_emit_display_list, app);
+}
+#endif
 
 static void calculator_window_paint(struct gui_window *win) {
   if (!win || !win->user_data) return;
@@ -105,6 +164,9 @@ static void calculator_window_resize(struct gui_window *win,
   (void)w;
   (void)h;
   if (!win || !win->user_data) return;
+#if defined(CAPYOS_HAVE_CAPYUI_WIDGET)
+  app_display_list_bridge_reset(&g_calc_dl_bridge);
+#endif
   calculator_paint((struct calculator_app *)win->user_data);
 }
 
@@ -159,7 +221,7 @@ static void calculator_window_key(struct gui_window *win, uint32_t keycode,
       app->has_result = 0;
       if (app->display)
         widget_set_text(app->display, app->expr[0] ? app->expr : "0");
-      if (app->window) compositor_invalidate(app->window->id);
+      calculator_invalidate_display(app);
     }
   } else if (ch == 'c' || ch == 'C') {
     struct widget fake;
@@ -261,6 +323,9 @@ void calculator_open(void) {
 
 void calculator_paint(struct calculator_app *app) {
   if (!app || !app->window) return;
+#if defined(CAPYOS_HAVE_CAPYUI_WIDGET)
+  if (calculator_render_display_list(app) == 0) return;
+#endif
   {
     struct gui_surface *s = &app->window->surface;
     const struct gui_theme_palette *theme = compositor_theme();

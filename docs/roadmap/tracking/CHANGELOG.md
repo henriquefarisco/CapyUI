@@ -2,6 +2,23 @@
 
 Mudanças por release tag, da mais recente para a mais antiga. Cada entrada é imutável após release.
 
+# [2.13.1] — 2026-05-23
+
+**Marco:** hotfix de packaging e alinhamento do release corrente após `2.13.0`. A ABI `capy-ui-widget` continua em `2.13`; este corte existe para publicar os novos assets e manter os URLs tag-pinned usados pelo CapyOS.
+
+### Mudado
+
+- `VERSION` 2.13.0 → 2.13.1.
+- `README.md` e `Makefile` agora apontam para `v2.13.1`.
+- `docs/roadmap/STATUS.md` e `docs/roadmap/tracking/ABSOLUTE.md` passam a mostrar `2.13.1` como pacote corrente.
+- `README.md` atualiza o pin CapyOS para `0.8.0-alpha.257+20260523`.
+
+### ABI
+
+- `capy-ui-widget` permanece `2.13`.
+- `capy-ui-desktop-session` permanece `1`.
+- Display-list schema permanece `7`.
+
 ## [2.13.0] — 2026-05-21
 
 **Marco:** **décimo quarto e último minor da fase 2.x — FASE 2.x COMPLETA (14/14)**. Login screen plumbing minimalista entregue: 12 macros (taxonomia layout + thresholds + power) + 1 API determinística (`capy_login_choose_layout`). **Biometric/SSO, PIN keypad, locked-badge animation e wake-screen deferidos** para 3.x.

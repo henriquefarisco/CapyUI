@@ -9,13 +9,28 @@
 #include "util/kstring.h"
 #include "memory/kmem.h"
 #include <stddef.h>
+#if defined(CAPYOS_HAVE_CAPYUI_WIDGET)
+#include "internal/app_display_list_bridge.h"
+#endif
 
 static struct text_editor_app g_editor;
 static int g_editor_open = 0;
 
+#if defined(CAPYOS_HAVE_CAPYUI_WIDGET)
+#define TEXT_EDITOR_DL_CMD_CAP 256u
+#define TEXT_EDITOR_DL_TEXT_CAP 16384u
+
+static struct capy_dl_cmd g_editor_dl_cmds[APP_DISPLAY_LIST_BRIDGE_FRAME_COUNT][TEXT_EDITOR_DL_CMD_CAP];
+static char g_editor_dl_text[APP_DISPLAY_LIST_BRIDGE_FRAME_COUNT][TEXT_EDITOR_DL_TEXT_CAP];
+static struct app_display_list_bridge g_editor_dl_bridge;
+#endif
+
 static void text_editor_cleanup(void) {
   g_editor.window = NULL;
   g_editor_open = 0;
+#if defined(CAPYOS_HAVE_CAPYUI_WIDGET)
+  app_display_list_bridge_reset(&g_editor_dl_bridge);
+#endif
 }
 
 static void text_editor_on_close(struct gui_window *win) {
@@ -35,6 +50,9 @@ static void text_editor_window_resize(struct gui_window *win,
   (void)w;
   (void)h;
   if (!win || !win->user_data) return;
+#if defined(CAPYOS_HAVE_CAPYUI_WIDGET)
+  app_display_list_bridge_reset(&g_editor_dl_bridge);
+#endif
   text_editor_paint((struct text_editor_app *)win->user_data);
 }
 
@@ -304,8 +322,163 @@ static void editor_paint_button(struct gui_surface *s, const struct font *f,
   if (label) font_draw_string(s, f, x + 6, y + 3, label, fg);
 }
 
+#if defined(CAPYOS_HAVE_CAPYUI_WIDGET)
+static void text_editor_dl_init_once(void) {
+  if (g_editor_dl_bridge.initialized) return;
+  app_display_list_bridge_init(&g_editor_dl_bridge,
+                               g_editor_dl_cmds[0],
+                               g_editor_dl_cmds[1],
+                               TEXT_EDITOR_DL_CMD_CAP,
+                               g_editor_dl_text[0],
+                               g_editor_dl_text[1],
+                               TEXT_EDITOR_DL_TEXT_CAP);
+}
+
+static int text_editor_dl_emit_button(struct capy_display_list *out,
+                                      int32_t x,
+                                      int32_t y,
+                                      uint32_t w,
+                                      uint32_t h,
+                                      const char *label,
+                                      uint32_t bg,
+                                      uint32_t fg,
+                                      uint32_t border,
+                                      const struct font *f) {
+  if (app_display_list_emit_rect(out, x, y, w, h, bg) != 0) return -1;
+  if (app_display_list_emit_border_rect(out, x, y, w, h, border, 1u) != 0) return -1;
+  if (label && f) {
+    if (app_display_list_emit_text(out, x + 6, y + 3,
+                                   (w > 6u) ? w - 6u : 0u, f->glyph_height,
+                                   label, fg, 16u) != 0) return -1;
+  }
+  return 0;
+}
+
+static void text_editor_line_number(int line_index, char *out, uint32_t out_len) {
+  int ln = line_index + 1;
+  int lp = 0;
+  char tmp[6];
+  int tp = 0;
+  if (!out || out_len == 0u) return;
+  if (ln < 10 && lp + 1 < (int)out_len) out[lp++] = ' ';
+  if (ln < 10 && lp + 1 < (int)out_len) out[lp++] = ' ';
+  else if (ln < 100 && lp + 1 < (int)out_len) out[lp++] = ' ';
+  while (ln > 0 && tp < (int)sizeof(tmp)) {
+    tmp[tp++] = (char)('0' + (ln % 10));
+    ln /= 10;
+  }
+  for (int j = tp - 1; j >= 0 && lp + 1 < (int)out_len; --j) out[lp++] = tmp[j];
+  out[lp] = '\0';
+}
+
+static void text_editor_status_text(struct text_editor_app *app, char *out, uint32_t out_len) {
+  int sp = 0;
+  if (!app || !out || out_len == 0u) return;
+  if (sp + 1 < (int)out_len) out[sp++] = 'L';
+  if (sp + 1 < (int)out_len) out[sp++] = 'n';
+  if (sp + 1 < (int)out_len) out[sp++] = ' ';
+  {
+    int v = app->cursor_line + 1;
+    char t[8];
+    int tp = 0;
+    if (v == 0) t[tp++] = '0';
+    else { while (v > 0 && tp < (int)sizeof(t)) { t[tp++] = (char)('0' + (v % 10)); v /= 10; } }
+    for (int i = tp - 1; i >= 0 && sp + 1 < (int)out_len; --i) out[sp++] = t[i];
+  }
+  if (sp + 1 < (int)out_len) out[sp++] = ',';
+  if (sp + 1 < (int)out_len) out[sp++] = ' ';
+  if (sp + 1 < (int)out_len) out[sp++] = 'C';
+  if (sp + 1 < (int)out_len) out[sp++] = 'o';
+  if (sp + 1 < (int)out_len) out[sp++] = 'l';
+  if (sp + 1 < (int)out_len) out[sp++] = ' ';
+  {
+    int v = app->cursor_col + 1;
+    char t[8];
+    int tp = 0;
+    if (v == 0) t[tp++] = '0';
+    else { while (v > 0 && tp < (int)sizeof(t)) { t[tp++] = (char)('0' + (v % 10)); v /= 10; } }
+    for (int i = tp - 1; i >= 0 && sp + 1 < (int)out_len; --i) out[sp++] = t[i];
+  }
+  out[sp] = '\0';
+}
+
+static int text_editor_emit_display_list(void *producer, struct capy_display_list *out) {
+  struct text_editor_app *app = (struct text_editor_app *)producer;
+  struct gui_surface *s;
+  const struct font *f = font_default();
+  const struct gui_theme_palette *theme = compositor_theme();
+  uint32_t gh;
+  int32_t y;
+  if (!app || !app->window || !out || !f) return -1;
+  s = &app->window->surface;
+  out->count = 0u;
+  out->text_used = 0u;
+  gh = f->glyph_height;
+  if (app_display_list_emit_rect(out, 0, 0, s->width, s->height,
+                                 theme->window_bg) != 0) return -1;
+  if (text_editor_dl_emit_button(out, EDITOR_BTN_SAVE_X, 2, EDITOR_BTN_SAVE_W, 18,
+                                 APP_T("Salvar", "Save", "Guardar"),
+                                 theme->accent, theme->accent_text,
+                                 theme->window_border, f) != 0) return -1;
+  if (text_editor_dl_emit_button(out, EDITOR_BTN_OPEN_X, 2, EDITOR_BTN_OPEN_W, 18,
+                                 APP_T("Abrir", "Open", "Abrir"),
+                                 theme->accent_alt, theme->accent_text,
+                                 theme->window_border, f) != 0) return -1;
+  if (app_display_list_emit_text(out, EDITOR_BTN_OPEN_X + EDITOR_BTN_OPEN_W + 8, 4,
+                                 s->width > EDITOR_BTN_OPEN_X + EDITOR_BTN_OPEN_W + 8
+                                     ? s->width - (EDITOR_BTN_OPEN_X + EDITOR_BTN_OPEN_W + 8)
+                                     : 0u,
+                                 gh, app->path, theme->text, 16u) != 0) return -1;
+  if (app->modified) {
+    if (app_display_list_emit_text(out, (int32_t)(s->width - 80), 4, 80u, gh,
+                                   APP_T("[modificado]", "[modified]", "[modificado]"),
+                                   theme->accent_alt, 16u) != 0) return -1;
+  }
+  y = EDITOR_TOOLBAR_H;
+  for (int i = app->scroll_offset;
+       i < app->line_count && y + (int32_t)gh < (int32_t)s->height; ++i) {
+    char lnum[8];
+    text_editor_line_number(i, lnum, sizeof(lnum));
+    if (app_display_list_emit_text(out, 4, y, 32u, gh, lnum,
+                                   theme->text_muted, 16u) != 0) return -1;
+    if (app_display_list_emit_text(out, 40, y,
+                                   s->width > 40u ? s->width - 40u : 0u, gh,
+                                   app->lines[i], theme->text, 16u) != 0) return -1;
+    if (i == app->cursor_line) {
+      int32_t cx = 40 + app->cursor_col * (int32_t)f->glyph_width;
+      if (app_display_list_emit_rect(out, cx, y, 1u, gh, theme->accent) != 0) return -1;
+    }
+    y += (int32_t)gh;
+  }
+  {
+    int32_t bar_y = (int32_t)s->height - (int32_t)gh - 4;
+    char status[64];
+    if (app_display_list_emit_rect(out, 0, bar_y, s->width, 1u,
+                                   theme->terminal_bg) != 0) return -1;
+    text_editor_status_text(app, status, sizeof(status));
+    if (app_display_list_emit_text(out, 4, bar_y, 160u, gh, status,
+                                   theme->text_muted, 16u) != 0) return -1;
+    if (app->modified) {
+      if (app_display_list_emit_text(out, (int32_t)(s->width - 72), bar_y, 72u, gh,
+                                     "[Ctrl+S]", theme->accent_alt, 16u) != 0) return -1;
+    }
+  }
+  return 0;
+}
+
+static int text_editor_render_display_list(struct text_editor_app *app) {
+  if (!app || !app->window) return -1;
+  text_editor_dl_init_once();
+  return app_display_list_bridge_render_window(&g_editor_dl_bridge, app->window,
+                                               text_editor_emit_display_list, app);
+}
+#endif
+
 void text_editor_paint(struct text_editor_app *app) {
   if (!app || !app->window) return;
+#if defined(CAPYOS_HAVE_CAPYUI_WIDGET)
+  if (text_editor_render_display_list(app) == 0) return;
+#endif
   struct gui_surface *s = &app->window->surface;
   const struct font *f = font_default();
   const struct gui_theme_palette *theme = compositor_theme();

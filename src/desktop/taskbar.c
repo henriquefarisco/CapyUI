@@ -185,6 +185,100 @@ static int32_t tb_items_right_edge(struct taskbar *tb, const struct font *f,
   return right;
 }
 
+static int tb_invalidate_span(struct taskbar *tb, int32_t x0, int32_t x1) {
+  struct gui_rect rect;
+  uint32_t surface_w;
+  if (!tb || !tb->window) return 0;
+  surface_w = tb->window->surface.width;
+  if (x0 < 0) x0 = 0;
+  if (x1 > (int32_t)surface_w) x1 = (int32_t)surface_w;
+  if (x0 >= x1) return 0;
+  rect.x = x0;
+  rect.y = 0;
+  rect.width = (uint32_t)(x1 - x0);
+  rect.height = TASKBAR_HEIGHT;
+  compositor_invalidate_rect(tb->window->id, &rect);
+  return 1;
+}
+
+static int tb_invalidate_item(struct taskbar *tb, uint32_t index) {
+  const struct font *f = font_default();
+  uint8_t scale = compositor_ui_scale();
+  int32_t menu_w = 82 + 20 * (scale - 1);
+  int32_t item_x = menu_w + 12 + (int32_t)index * (120 + 28 * (scale - 1) + 4);
+  int32_t item_w = 120 + 28 * (scale - 1);
+  int32_t item_right;
+  if (!tb || !tb->window) return 0;
+  item_right = tb_items_right_edge(tb, f, tb->window->surface.width);
+  if (item_x >= item_right) return 0;
+  if (item_x + item_w > item_right) item_w = item_right - item_x;
+  if (item_w < 16) return 0;
+  return tb_invalidate_span(tb, item_x, item_x + item_w);
+}
+
+static int tb_clock_span(struct taskbar *tb, const struct font *f,
+                         int32_t *x0, int32_t *x1) {
+  uint32_t surface_w;
+  uint32_t cw;
+  int32_t cx;
+  int32_t pill_x;
+  int32_t pill_end;
+  if (!tb || !tb->window || !tb->show_clock || !f || !x0 || !x1) return 0;
+  surface_w = tb->window->surface.width;
+  cx = tb_clock_x(tb, f, surface_w);
+  cw = font_string_width(f, tb->clock_text);
+  pill_x = (cx > 6) ? cx - 6 : 0;
+  pill_end = pill_x + (int32_t)(cw + 12u);
+  if (pill_x >= (int32_t)surface_w) return 0;
+  if (pill_end > (int32_t)surface_w) pill_end = (int32_t)surface_w;
+  if (pill_x >= pill_end) return 0;
+  *x0 = pill_x;
+  *x1 = pill_end;
+  return 1;
+}
+
+static int tb_tray_span(struct taskbar *tb, const struct font *f,
+                        int32_t *x0, int32_t *x1) {
+  uint32_t surface_w;
+  int32_t tx;
+  int32_t end;
+  if (!tb || !tb->window || !tb->tray_text[0] || !x0 || !x1) return 0;
+  surface_w = tb->window->surface.width;
+  tx = tb_tray_x(tb, f, surface_w) - 8;
+  end = tb_clock_x(tb, f, surface_w);
+  if (tx < 0) tx = 0;
+  if (end > (int32_t)surface_w) end = (int32_t)surface_w;
+  if (tx >= end) return 0;
+  *x0 = tx;
+  *x1 = end;
+  return 1;
+}
+
+static int tb_status_span(struct taskbar *tb, const struct font *f,
+                          int32_t *x0, int32_t *x1) {
+  int32_t clock_x0;
+  int32_t clock_x1;
+  int32_t tray_x0;
+  int32_t tray_x1;
+  int have_clock;
+  int have_tray;
+  if (!tb || !tb->window || !x0 || !x1) return 0;
+  have_clock = tb_clock_span(tb, f, &clock_x0, &clock_x1);
+  have_tray = tb_tray_span(tb, f, &tray_x0, &tray_x1);
+  if (!have_clock && !have_tray) return 0;
+  if (have_clock && have_tray) {
+    *x0 = (clock_x0 < tray_x0) ? clock_x0 : tray_x0;
+    *x1 = (clock_x1 > tray_x1) ? clock_x1 : tray_x1;
+  } else if (have_clock) {
+    *x0 = clock_x0;
+    *x1 = clock_x1;
+  } else {
+    *x0 = tray_x0;
+    *x1 = tray_x1;
+  }
+  return 1;
+}
+
 static uint32_t tb_mix_color(uint32_t color, uint32_t target,
                              uint8_t amount) {
   uint32_t r = (color >> 16) & 0xFFu;
@@ -243,6 +337,7 @@ void taskbar_init(struct taskbar *tb, uint32_t screen_w, uint32_t screen_h) {
   tb->tray_text[0] = '\0';
   tb->show_clock = 1;
   tb_strcpy(tb->clock_text, "00:00:00", 16);
+  taskbar_display_list_reset();
 
   int32_t y = (int32_t)(screen_h - TASKBAR_HEIGHT);
   tb->window = compositor_create_window("Taskbar", 0, y, screen_w, TASKBAR_HEIGHT);
@@ -301,19 +396,24 @@ void taskbar_add_window(struct taskbar *tb, uint32_t window_id, const char *name
 }
 
 void taskbar_set_focused(struct taskbar *tb, uint32_t window_id) {
-  int changed = 0;
   if (!tb) return;
   for (uint32_t i = 0; i < tb->item_count; i++) {
     int focused = (tb->items[i].window_id == window_id) ? 1 : 0;
     if (tb->items[i].focused != focused) {
       tb->items[i].focused = focused;
-      changed = 1;
+      tb_invalidate_item(tb, i);
     }
   }
-  if (changed && tb->window) compositor_invalidate(tb->window->id);
 }
 
 int taskbar_update_clock(struct taskbar *tb, const char *time_str) {
+  const struct font *f = font_default();
+  int32_t old_x0;
+  int32_t old_x1;
+  int32_t new_x0;
+  int32_t new_x1;
+  int have_old;
+  int have_new;
   if (!tb || !time_str) return 0;
   if (tb->clock_text[0] == time_str[0] &&
       tb->clock_text[1] == time_str[1] &&
@@ -326,8 +426,20 @@ int taskbar_update_clock(struct taskbar *tb, const char *time_str) {
       tb->clock_text[8] == time_str[8]) {
     return 0;
   }
+  have_old = tb_status_span(tb, f, &old_x0, &old_x1);
   tb_strcpy(tb->clock_text, time_str, 16);
-  if (tb->window) compositor_invalidate(tb->window->id);
+  have_new = tb_status_span(tb, f, &new_x0, &new_x1);
+  if (have_old && have_new) {
+    tb_invalidate_span(tb,
+                       old_x0 < new_x0 ? old_x0 : new_x0,
+                       old_x1 > new_x1 ? old_x1 : new_x1);
+  } else if (have_old) {
+    tb_invalidate_span(tb, old_x0, old_x1);
+  } else if (have_new) {
+    tb_invalidate_span(tb, new_x0, new_x1);
+  } else if (tb->window) {
+    compositor_invalidate(tb->window->id);
+  }
   return 1;
 }
 
@@ -365,6 +477,9 @@ void taskbar_paint(struct taskbar *tb) {
   int32_t item_right = 0;
   if (!tb || !tb->window) return;
   taskbar_prune_stale_windows(tb);
+#if defined(CAPYOS_HAVE_CAPYUI_WIDGET)
+  if (taskbar_render_display_list(tb) == 0) return;
+#endif
   s = &tb->window->surface;
   tb->bg_color = theme->taskbar_bg;
   tb->fg_color = theme->taskbar_fg;
@@ -500,11 +615,30 @@ void taskbar_handle_click(struct taskbar *tb, int32_t x, int32_t y) {
 }
 
 int taskbar_update_tray(struct taskbar *tb, const char *text) {
+  const struct font *f = font_default();
   char next[TASKBAR_TRAY_TEXT_MAX];
+  int32_t old_x0;
+  int32_t old_x1;
+  int32_t new_x0;
+  int32_t new_x1;
+  int have_old;
+  int have_new;
   if (!tb) return 0;
   tb_strcpy(next, text ? text : "", sizeof(next));
   if (tb_streq(tb->tray_text, next)) return 0;
+  have_old = tb_status_span(tb, f, &old_x0, &old_x1);
   tb_strcpy(tb->tray_text, next, sizeof(tb->tray_text));
-  if (tb->window) compositor_invalidate(tb->window->id);
+  have_new = tb_status_span(tb, f, &new_x0, &new_x1);
+  if (have_old && have_new) {
+    tb_invalidate_span(tb,
+                       old_x0 < new_x0 ? old_x0 : new_x0,
+                       old_x1 > new_x1 ? old_x1 : new_x1);
+  } else if (have_old) {
+    tb_invalidate_span(tb, old_x0, old_x1);
+  } else if (have_new) {
+    tb_invalidate_span(tb, new_x0, new_x1);
+  } else if (tb->window) {
+    compositor_invalidate(tb->window->id);
+  }
   return 1;
 }

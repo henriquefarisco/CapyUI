@@ -349,6 +349,9 @@ void desktop_icons_paint(struct gui_surface *s) {
   if (!s) return;
   g_di.screen_w = s->width;
   g_di.screen_h = s->height;
+#if defined(CAPYOS_HAVE_CAPYUI_WIDGET)
+  if (desktop_icons_render_display_list(s) == 0) return;
+#endif
   const struct gui_theme_palette *theme = compositor_theme();
   const struct font *f = font_default();
   uint32_t usable_h = di_usable_height();

@@ -1,10 +1,10 @@
 # CapyUI — Status atual
 
-Última atualização: 2026-05-21
+Última atualização: 2026-05-23
 
 ## Versão
 
-- **Pacote entregue (tagged):** `2.13.0` (alpha.276) — **décima quarta e última fatia da fase 2.x (login screen) — FASE 2.x COMPLETA 14/14**
+- **Pacote entregue (tagged):** `2.13.1` (alpha.277) — hotfix de packaging e alinhamento de release após 2.13.0; ABI 2.13 permanece fechada.
 - **ABI `capy-ui-widget`:** `2.13` (aditivo sobre 2.12). 14 minors 0.0–0.15 + 1.0 freeze + 1.1–1.10 (todas) + 2.0–2.12 (plugin/advanced widgets/virtualization/undo/theme packs/devtools/display mode/users/contrast/desktop icons/file mgr/icons/wallpaper) + **2.13 login screen** compõem o surface ativo. 1.x continua em **LTS ≥12m pós-2.0**. Deprecation policy ARMADA para minors 2.x.
 - **ABI `capy-ui-desktop-session`:** `1` (entregue em `alpha.241`)
 - **Display-list schema:** **`7`** (bumps 4→5 em v1.5 com `CAPY_DL_DPI_SCOPE`, 5→6 em v1.9 com `CAPY_DL_TRANSFORM_PUSH/POP`, 6→7 em v2.0 com `CAPY_DL_PLUGIN_OP`)

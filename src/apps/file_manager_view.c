@@ -223,6 +223,9 @@ int fm_row_at(struct file_manager_app *app, int32_t x, int32_t y) {
 
 void file_manager_paint(struct file_manager_app *app) {
   if (!app || !app->window) return;
+#if defined(CAPYOS_HAVE_CAPYUI_WIDGET)
+  if (file_manager_render_display_list(app) == 0) return;
+#endif
   struct gui_surface *s = &app->window->surface;
   const struct font *f = font_default();
   const struct gui_theme_palette *theme = compositor_theme();

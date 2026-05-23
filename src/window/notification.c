@@ -9,6 +9,11 @@ static void n_strcpy(char *d, const char *s, size_t max) {
   size_t i = 0; while (i < max - 1 && s[i]) { d[i] = s[i]; i++; } d[i] = '\0';
 }
 
+#if defined(CAPYOS_HAVE_CAPYUI_WIDGET)
+int notify_render_display_list(struct notification_manager *nm,
+                               struct gui_surface *surface);
+#endif
+
 void notify_init(struct notification_manager *nm, uint32_t sw, uint32_t sh) {
   if (!nm) return;
   n_memset(nm, 0, sizeof(*nm));
@@ -54,6 +59,9 @@ static void n_fill_rect(struct gui_surface *s, int32_t x, int32_t y,
 
 void notify_paint(struct notification_manager *nm, struct gui_surface *surface) {
   if (!nm || !surface) return;
+#if defined(CAPYOS_HAVE_CAPYUI_WIDGET)
+  if (notify_render_display_list(nm, surface) == 0) return;
+#endif
   const struct font *f = font_default();
   const struct gui_theme_palette *theme = compositor_theme();
   if (!f || !theme) return;

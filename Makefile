@@ -1,4 +1,4 @@
-# CapyUI Makefile — 2.13.0 (alpha.276) — ABI 2.x (login screen aditivo, fim da fase 2.x)
+# CapyUI Makefile — 2.13.1 (alpha.277) — ABI 2.x (packaging hotfix pós-2.13.0)
 #
 # CapyUI owns and publishes its own capypkg modules. The build does NOT
 # touch CapyOS sources. After the alpha.241 migration the desktop session
@@ -17,6 +17,19 @@ CFLAGS ?= -std=c11 -Wall -Wextra -Werror -pedantic -O2 -g
 CPPFLAGS ?=
 LDFLAGS ?=
 BUILD_DIR := build
+CURRENT_UID := $(shell id -u 2>/dev/null || echo unknown)
+CURRENT_GID := $(shell id -g 2>/dev/null || echo unknown)
+ALLOW_ROOT_BUILD ?= 0
+ifeq ($(CURRENT_UID),0)
+  ifneq ($(ALLOW_ROOT_BUILD),1)
+    $(error Refusing to run make as root; run as your normal user to avoid root-owned build artifacts)
+  endif
+endif
+ifneq ($(wildcard $(BUILD_DIR)),)
+  ifneq ($(shell test -w "$(BUILD_DIR)" -a -x "$(BUILD_DIR)" && echo ok),ok)
+    $(error $(BUILD_DIR) is not writable by the current user; fix ownership with: sudo chown -R $(CURRENT_UID):$(CURRENT_GID) $(BUILD_DIR))
+  endif
+endif
 
 VERSION := $(shell cat VERSION)
 
@@ -69,14 +82,14 @@ test: $(TEST_BIN)
 lint:
 	$(CC) $(CPPFLAGS) $(CFLAGS) -fsyntax-only $(SRC_WIDGET)
 	git diff --check
-	test "$(VERSION)" = "2.13.0"
+	test "$(VERSION)" = "2.13.1"
 
 security:
 	$(CC) $(CPPFLAGS) $(CFLAGS) -D_FORTIFY_SOURCE=2 -fstack-protector-strong -fPIE -fsyntax-only $(SRC_WIDGET)
 
 version-check:
-	test "$(VERSION)" = "2.13.0"
-	grep -q "Version: 2.13.0" README.md
+	test "$(VERSION)" = "2.13.1"
+	grep -q "Version: 2.13.1" README.md
 
 validate: lint security test version-check
 

@@ -46,6 +46,10 @@ void fm_set_status(struct file_manager_app *app, const char *text,
 void fm_set_vfs_status(struct file_manager_app *app, const char *prefix,
                        int rc);
 void fm_set_ok_status(struct file_manager_app *app, const char *text);
+void fm_invalidate_row(struct file_manager_app *app, int row);
+void fm_invalidate_status_bar(struct file_manager_app *app);
+void fm_invalidate_selection_change(struct file_manager_app *app,
+                                    int old_selected, int new_selected);
 
 /* ── view-layer helpers (file_manager_view.c) ────────────────────────── */
 
@@ -66,6 +70,16 @@ void fm_paint_button(struct gui_surface *s, const struct font *f, int32_t x,
                      int32_t y, int32_t w, const char *label, uint32_t bg,
                      uint32_t fg, uint32_t border);
 int fm_row_at(struct file_manager_app *app, int32_t x, int32_t y);
+#if defined(CAPYOS_HAVE_CAPYUI_WIDGET)
+int file_manager_render_display_list(struct file_manager_app *app);
+void file_manager_display_list_reset(void);
+#else
+static inline int file_manager_render_display_list(struct file_manager_app *app) {
+  (void)app;
+  return -1;
+}
+static inline void file_manager_display_list_reset(void) {}
+#endif
 
 /* ── filesystem operation helpers (file_manager.c) ───────────────────── */
 

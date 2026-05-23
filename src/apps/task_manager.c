@@ -27,6 +27,11 @@
 static struct task_manager_app g_tm;
 static int g_tm_open = 0;
 
+#if defined(CAPYOS_HAVE_CAPYUI_WIDGET)
+int task_manager_render_display_list(struct task_manager_app *app);
+void task_manager_display_list_reset(void);
+#endif
+
 static void itoa_simple(int v, char *buf, int buflen) {
   int p = 0;
   if (v < 0) { buf[p++] = '-'; v = -v; }
@@ -185,6 +190,9 @@ void task_manager_kill_selected(struct task_manager_app *app) {
 static void task_manager_cleanup(void) {
   g_tm.window = NULL;
   g_tm_open = 0;
+#if defined(CAPYOS_HAVE_CAPYUI_WIDGET)
+  task_manager_display_list_reset();
+#endif
 }
 
 static void task_manager_on_close(struct gui_window *win) {
@@ -204,6 +212,9 @@ static void task_manager_window_resize(struct gui_window *win,
   (void)w;
   (void)h;
   if (!win || !win->user_data) return;
+#if defined(CAPYOS_HAVE_CAPYUI_WIDGET)
+  task_manager_display_list_reset();
+#endif
   task_manager_paint((struct task_manager_app *)win->user_data);
 }
 
@@ -217,6 +228,58 @@ static int task_manager_row_for_y(const struct task_manager_app *app,
 static int task_manager_row_is_valid(const struct task_manager_app *app,
                                      int row) {
   return app && row >= 0 && row < task_manager_visible_count(app);
+}
+
+static void task_manager_invalidate_rect(struct task_manager_app *app,
+                                         int32_t x, int32_t y,
+                                         uint32_t w, uint32_t h) {
+  struct gui_rect rect;
+  if (!app || !app->window || w == 0u || h == 0u) return;
+  rect.x = x;
+  rect.y = y;
+  rect.width = w;
+  rect.height = h;
+  compositor_invalidate_rect(app->window->id, &rect);
+}
+
+static void task_manager_invalidate_visible_row(struct task_manager_app *app,
+                                                int row) {
+  int32_t ypos;
+  int32_t footer_y;
+  if (!app || !app->window || row < app->scroll_offset) return;
+  ypos = (int32_t)(TASK_MANAGER_TAB_HEIGHT + 24) +
+         (row - app->scroll_offset) * 18;
+  footer_y = (int32_t)(app->window->surface.height - 22);
+  if (ypos + 18 > footer_y) return;
+  task_manager_invalidate_rect(app, 0, ypos, app->window->surface.width, 18u);
+}
+
+static void task_manager_invalidate_list_area(struct task_manager_app *app) {
+  int32_t list_y = (int32_t)(TASK_MANAGER_TAB_HEIGHT + 24);
+  int32_t footer_y;
+  if (!app || !app->window) return;
+  footer_y = (int32_t)(app->window->surface.height - 22);
+  if (footer_y <= list_y) return;
+  task_manager_invalidate_rect(app, 0, list_y, app->window->surface.width,
+                               (uint32_t)(footer_y - list_y));
+}
+
+static void task_manager_invalidate_footer_action(struct task_manager_app *app) {
+  int32_t footer_y;
+  uint32_t width;
+  if (!app || !app->window || app->window->surface.width <= 72u) return;
+  footer_y = (int32_t)(app->window->surface.height - 22);
+  width = app->window->surface.width;
+  task_manager_invalidate_rect(app, (int32_t)(width - 72u), footer_y,
+                               64u, 20u);
+}
+
+static void task_manager_invalidate_selection_change(
+    struct task_manager_app *app, int old_selected, int new_selected) {
+  if (old_selected == new_selected) return;
+  task_manager_invalidate_visible_row(app, old_selected);
+  task_manager_invalidate_visible_row(app, new_selected);
+  task_manager_invalidate_footer_action(app);
 }
 
 static enum task_manager_view task_manager_tab_for_x(int32_t x,
@@ -267,13 +330,15 @@ static void task_manager_window_mouse(struct gui_window *win, int32_t x, int32_t
   /* Row selection. */
   int row = task_manager_row_for_y(app, y);
   if (task_manager_row_is_valid(app, row)) {
+    int old_selected = app->selected;
     app->selected = row;
-    compositor_invalidate(win->id);
+    task_manager_invalidate_selection_change(app, old_selected, app->selected);
   }
 }
 
 static void task_manager_window_scroll(struct gui_window *win, int32_t delta) {
   int visible = 0;
+  int old_offset = 0;
   if (!win || !win->user_data) return;
   struct task_manager_app *app = (struct task_manager_app *)win->user_data;
   visible = task_manager_visible_count(app);
@@ -281,11 +346,14 @@ static void task_manager_window_scroll(struct gui_window *win, int32_t delta) {
     task_manager_refresh(app);
     return;
   }
+  old_offset = app->scroll_offset;
   if (delta > 0 && app->scroll_offset > 0)
     app->scroll_offset--;
   else if (delta < 0 && app->scroll_offset < visible - 1)
     app->scroll_offset++;
-  task_manager_refresh(app);
+  if (app->scroll_offset != old_offset) {
+    task_manager_invalidate_list_area(app);
+  }
 }
 
 void task_manager_open(void) {
@@ -548,6 +616,9 @@ static void task_manager_paint_footer(struct task_manager_app *app,
 
 void task_manager_paint(struct task_manager_app *app) {
   if (!app || !app->window) return;
+#if defined(CAPYOS_HAVE_CAPYUI_WIDGET)
+  if (task_manager_render_display_list(app) == 0) return;
+#endif
   struct gui_surface *s = &app->window->surface;
   const struct font *f = font_default();
   const struct gui_theme_palette *theme = compositor_theme();

@@ -582,6 +582,9 @@ int taskbar_recent_popup_entry_at(struct taskbar *tb, int32_t local_y) {
 
 static void recent_popup_paint(struct gui_window *win) {
   if (!win || !win->user_data) return;
+#if defined(CAPYOS_HAVE_CAPYUI_WIDGET)
+  if (taskbar_recent_render_display_list(win) == 0) return;
+#endif
   struct taskbar *tb = (struct taskbar *)win->user_data;
   const struct gui_theme_palette *theme = compositor_theme();
   const struct font *f = font_default();
@@ -761,6 +764,9 @@ static void taskbar_draw_session_footer(struct taskbar *tb,
 
 void menu_popup_paint(struct gui_window *win) {
   if (!win || !win->user_data) return;
+#if defined(CAPYOS_HAVE_CAPYUI_WIDGET)
+  if (taskbar_menu_render_display_list(win) == 0) return;
+#endif
   struct taskbar *tb = (struct taskbar *)win->user_data;
   const struct gui_theme_palette *theme = compositor_theme();
   const struct font *f = font_default();

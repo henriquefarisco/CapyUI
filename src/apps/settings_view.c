@@ -181,6 +181,9 @@ static int32_t paint_action_button(struct gui_surface *s,
 
 void settings_paint(struct settings_app *app) {
   if (!app || !app->window) return;
+#if defined(CAPYOS_HAVE_CAPYUI_WIDGET)
+  if (settings_render_display_list(app) == 0) return;
+#endif
   struct gui_surface *s = &app->window->surface;
   const struct font *f = font_default();
   const struct gui_theme_palette *theme = compositor_theme();

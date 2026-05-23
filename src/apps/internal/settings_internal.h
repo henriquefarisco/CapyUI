@@ -76,6 +76,16 @@ const struct settings_click_row *rows_hit(int32_t x, int32_t y);
 
 int32_t settings_sidebar_width(uint32_t surface_w, uint8_t scale);
 void settings_layout_tabs(struct settings_app *app);
+#if defined(CAPYOS_HAVE_CAPYUI_WIDGET)
+int settings_render_display_list(struct settings_app *app);
+void settings_display_list_reset(void);
+#else
+static inline int settings_render_display_list(struct settings_app *app) {
+  (void)app;
+  return -1;
+}
+static inline void settings_display_list_reset(void) {}
+#endif
 
 /* ── username + admin gates (settings_actions.c) ─────────────────────── */
 
