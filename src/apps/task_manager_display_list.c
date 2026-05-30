@@ -65,7 +65,9 @@ static int task_manager_dl_count_tasks(void) {
   struct task_iter it;
   struct task_stats s;
   int n = 0;
-  for (int ok = task_iter_first(&it, &s); ok; ok = task_iter_next(&it, &s)) n++;
+  for (int ok = task_iter_first(&it, &s); ok; ok = task_iter_next(&it, &s)) {
+    if (s.state != TASK_STATE_ZOMBIE && s.state != TASK_STATE_DEAD) n++;
+  }
   return n;
 }
 
@@ -73,7 +75,9 @@ static int task_manager_dl_count_processes(void) {
   struct process_iter it;
   struct process_stats s;
   int n = 0;
-  for (int ok = process_iter_first(&it, &s); ok; ok = process_iter_next(&it, &s)) n++;
+  for (int ok = process_iter_first(&it, &s); ok; ok = process_iter_next(&it, &s)) {
+    if (s.state != PROC_STATE_ZOMBIE) n++;
+  }
   return n;
 }
 
@@ -199,6 +203,7 @@ static int task_manager_dl_emit_tasks_rows(struct capy_display_list *out,
   for (int ok = task_iter_first(&it, &t); ok; ok = task_iter_next(&it, &t)) {
     char pid_buf[8];
     int32_t ypos;
+    if (t.state == TASK_STATE_ZOMBIE || t.state == TASK_STATE_DEAD) continue;
     if (row < app->scroll_offset) { row++; continue; }
     ypos = task_manager_dl_row_y(row - app->scroll_offset);
     if (ypos + 18 > footer_y) break;
@@ -235,6 +240,7 @@ static int task_manager_dl_emit_processes_rows(struct capy_display_list *out,
     char pid_buf[8];
     char uid_buf[8];
     int32_t ypos;
+    if (p.state == PROC_STATE_ZOMBIE) continue;
     if (row < app->scroll_offset) { row++; continue; }
     ypos = task_manager_dl_row_y(row - app->scroll_offset);
     if (ypos + 18 > footer_y) break;
@@ -277,6 +283,8 @@ static int task_manager_dl_emit_footer(struct capy_display_list *out,
   const char *label = task_manager_dl_view_label(app->view);
   const char *lang = app_current_language();
   const char *btn_label;
+  struct system_service_status service;
+  int start_action = 0;
   int p = 0;
   int total = task_manager_dl_visible_count(app->view);
   int action_enabled = app->selected >= 0;
@@ -293,9 +301,17 @@ static int task_manager_dl_emit_footer(struct capy_display_list *out,
   if (task_manager_dl_emit_text(out, 88, footer_y + 2, 68u, f,
                                 localization_select(lang, "Atualizar", "Refresh", "Actualizar"),
                                 theme->text) != 0) return -1;
-  btn_label = (app->view == TASK_MANAGER_VIEW_SERVICES)
-                  ? localization_select(lang, "Reiniciar", "Restart", "Reiniciar")
-                  : localization_select(lang, "Matar", "Kill", "Matar");
+  if (app->view == TASK_MANAGER_VIEW_SERVICES) {
+    start_action = app->selected >= 0 &&
+        service_manager_get_at((size_t)app->selected, &service) == 0 &&
+        (service.state == SYSTEM_SERVICE_STATE_STOPPED ||
+         service.state == SYSTEM_SERVICE_STATE_UNKNOWN);
+    btn_label = start_action ? localization_select(lang, "Iniciar", "Start", "Iniciar")
+                             : localization_select(lang, "Parar", "Stop", "Parar");
+    if (action_enabled && start_action) btn_bg = theme->accent;
+  } else {
+    btn_label = localization_select(lang, "Matar", "Kill", "Matar");
+  }
   if (app_display_list_emit_rect(out, btn_x, footer_y, btn_w, 20u, btn_bg) != 0) return -1;
   return task_manager_dl_emit_text(out, btn_x + 4, footer_y + 2, btn_w - 8u, f,
                                    btn_label,

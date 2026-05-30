@@ -1,61 +1,72 @@
 # CapyUI — Métricas
 
-**Última atualização:** 2026-05-19 (snapshot pós `v0.6.0` — **fase curto prazo completa**)
+**Última atualização:** 2026-05-29 (snapshot pós `v2.14.0` — advanced widget state: date picker).
+
+> Antes desta atualização o arquivo estava congelado no snapshot `v0.6.0`
+> (47 testes / ABI 0.6 / schema 2). Os números abaixo refletem o estado real.
 
 ## Testes
 
-- **Total:** 47 funções de teste
-- **Arquivo:** `tests/test_widget_contracts.c`
-- **Cobertura por área:**
-  - Widget tree + eventos: 2 (`test_create_find_and_click`, `test_disabled_widget_ignores_input`)
-  - Layout: 4 (`test_layout_stack_equal_grow`, `test_layout_grid_2x2`, `test_layout_idempotent`, `test_layout_min_max_constraints`)
-  - Display-list: 4 (`test_displaylist_emit_simple_tree`, `test_displaylist_clip_balance`, `test_displaylist_overflow_rollback`, `test_displaylist_reset_and_text`)
-  - Focus traversal (since 0.3): 5 (`test_focus_defaults_and_set`, `test_focus_traversal_order`, `test_focus_tab_index_priority`, `test_focus_skip_non_traversable`, `test_focus_prev_wrap`)
-  - Dispatch key (since 0.3): 4 (`test_dispatch_key_tab_cycles`, `test_dispatch_key_enter_button`, `test_dispatch_key_space_checkbox`, `test_dispatch_key_escape_dialog`)
-  - Focus ring (display-list, since 0.3): 1 (`test_displaylist_focus_ring`)
-  - Text editing (since 0.4): 9 (`test_text_edit_insert_basic`, `test_text_edit_insert_middle_utf8`, `test_text_edit_insert_overflow`, `test_text_edit_delete_selection`, `test_text_edit_backspace_utf8`, `test_text_edit_readonly_blocks_insert`, `test_text_edit_ime_stub`, `test_text_edit_utf8_invalid_rejected`, `test_text_edit_determinism`)
-  - Password rendering (display-list, since 0.4): 1 (`test_displaylist_password_mode`)
-  - Animation (since 0.5): 9 (`test_anim_sample_start_returns_from`, `test_anim_sample_end_returns_to`, `test_anim_sample_inactive_returns_from`, `test_anim_linear_midpoint`, `test_anim_easings_monotonic_and_endpoints`, `test_anim_now_rewound_stable`, `test_anim_zero_duration_returns_from`, `test_anim_multiple_independent`, `test_anim_determinism`)
-  - Widget tick (since 0.5): 1 (`test_widget_tick_walks_tree`)
-  - Theme tokens (since 0.6): 4 (`test_theme_defaults_snapshot`, `test_theme_apply_stores_in_context`, `test_theme_resolve`, `test_theme_high_contrast_meets_wcag_aa`)
-  - Theme rendering (display-list, since 0.6): 3 (`test_displaylist_uses_theme_when_token_set`, `test_displaylist_backward_compat_with_literal`, `test_displaylist_theme_change_preserves_structure`)
+- **Total:** **321** funções de teste em `tests/test_widget_contracts.c`.
+- **Guard:** `make version-check` pina o total e exige `defs == call-sites em main()`,
+  então drift silencioso (teste definido mas não registrado, ou contagem fora do esperado) falha o CI.
+- **Breakdown por fase (resumo):** 97 (1.0 baseline) + 7×(1.1–1.5) + 8 (1.6) + 7×(1.7–1.10) + 8 (2.0) + 8 (2.1) + 7 (2.2) + 7 (2.3) + 8 (2.4) + 7×(2.5–2.7) + 8×(2.8–2.11) + 7 (2.12) + 6 (2.13) + 8 (2.14 date picker) + 8 (2.15 color picker) + 8 (2.16 table columns) + 8 (2.17 autocomplete) + 8 (2.18 tree hierarchy) + **8 (2.19 chart dataset)** = 321.
+- **v2.14 (date picker):** `test_date_set_valid_and_get`, `test_date_unset_get_returns_zero`,
+  `test_date_invalid_rejected_fail_closed`, `test_date_clear_resets`,
+  `test_date_wrong_widget_type_rejected`, `test_date_is_valid_calendar_predicate`,
+  `test_date_null_guards`, `test_date_determinism`.
+- **v2.15 (color picker):** `test_color_pack_channel_order`, `test_color_pack_extremes`,
+  `test_color_set_and_get`, `test_color_unset_get_returns_zero`, `test_color_clear_resets`,
+  `test_color_wrong_widget_type_rejected`, `test_color_null_guards`, `test_color_determinism`.
+- **v2.16 (table columns):** `test_table_set_and_query`, `test_table_index_out_of_range`,
+  `test_table_set_zero_count_clears`, `test_table_set_null_widths_rejected`, `test_table_clear`,
+  `test_table_wrong_widget_type_rejected`, `test_table_null_guards`, `test_table_default_no_columns`.
+- **v2.17 (autocomplete):** `test_autocomplete_set_and_query`, `test_autocomplete_item_out_of_range`,
+  `test_autocomplete_set_zero_count_clears`, `test_autocomplete_set_null_items_rejected`,
+  `test_autocomplete_clear`, `test_autocomplete_selection_clamp`,
+  `test_autocomplete_wrong_widget_type_rejected`, `test_autocomplete_null_guards`.
+- **v2.18 (tree hierarchy):** `test_tree_collapsed_default_expanded`, `test_tree_set_collapsed_toggle`,
+  `test_tree_depth_set_and_get`, `test_tree_row_visible_no_ancestors`,
+  `test_tree_row_visible_collapsed_ancestor`, `test_tree_row_visible_nested`,
+  `test_tree_wrong_widget_type_rejected`, `test_tree_null_guards`.
+- **v2.19 (chart dataset):** `test_chart_set_and_query`, `test_chart_value_out_of_range`,
+  `test_chart_set_zero_count_clears`, `test_chart_set_null_values_rejected`, `test_chart_clear`,
+  `test_chart_range_minmax`, `test_chart_wrong_widget_type_rejected`, `test_chart_null_guards`.
 
-## Linhas de código
+## Linhas de código (snapshot)
 
-- **Core (`src/widget/`):** estimado ~2.3k LOC
-  - `capy_widget.h` + `.c`
-  - `capy_layout.h` + `.c`
-  - `capy_display_list.h` + `.c`
-- **Tests (`tests/`):** ~1280 LOC
+- **Core portátil (`src/widget/*.c` + `*.h`):** ~7.9k LOC (5 fontes + 3 headers).
+- **Desktop-session (`src/desktop/` + `src/window/` + `src/apps/`, inc. internos):** ~12.5k LOC.
+  - **Cobertura local: 0** — só compila pelo caminho cross-repo CapyOS (ver `contracts/desktop-session-coupling.md` + ADR-0007).
+- **Tests (`tests/`):** ~7.6k LOC.
 
 ## ABI
 
-- **Master `capy-ui-widget`:** 0.6 (aditivo)
-- **Display-list schema:** 2 (sem mudança em v0.6; theme é ponteiro opcional na struct)
-- **Versions ativas:** 0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6
-- **Próxima:** 0.7 (adapter CapyOS — gate Etapa 4)
+- **`capy-ui-widget`:** **2.19** (aditivo sobre 2.18). Macros `2/19/0`; `CAPYUI_API_VERSION_TAG = 0x00021300`.
+- **`capy-ui-desktop-session`:** 1.
+- **Display-list schema:** **7** (sem mudança desde 2.0; bumps 4→5 em 1.5, 5→6 em 1.9, 6→7 em 2.0).
+- **Versões ativas:** 0.0–0.15 (0.7/0.12 reservadas), 1.0–1.10 (LTS ≥12m), 2.0–2.19.
+- **Deprecações ativas:** 0 (macro `CAPYUI_API_DEPRECATED` publicada, nenhum símbolo anotado).
 
-## Performance budget (placeholder)
+## Gates de CI
 
-Será definido em `v0.15.0` com baseline mensurável. Alvos preliminares:
+- `ci.yml` → `make validate` (lint + security + check-decoupling + 321 testes + version-check), ubuntu-latest.
+- `security.yml` → CodeQL (`make test`) + hardened compile (`make security`).
+- `abi-guard.yml` → `tools/abi_guard.sh` (remoção de símbolo público dentro do major = falha).
+- `release-artifacts.yml` → `make validate` + `make package` + publica rolling `latest` / tags `v*`.
 
-- 10000 widgets — `measure + arrange + emit` < 16ms em host x86_64 desktop.
-- Display-list overflow rollback em O(1).
-- Sem alocação dinâmica em hot path após init.
+## Performance budget
 
-## Métricas pendentes (a coletar)
+- Alvo (placeholder histórico de 0.15): 10k widgets `measure+arrange+emit` < 16 ms em host x86_64.
+- Benchmarks 100k widgets/16 ms (v1.7) ficam como gate externo (workspace não executa).
 
-- Tempo de `make validate` (target: < 10s).
-- Tamanho do binário de teste (target: < 100KB).
-- Cobertura de linhas (target: > 80% para core).
-- Cobertura de branches.
-- Latência p99 de emit em árvore de 1000 widgets.
+## Métricas pendentes (a coletar externamente)
+
+- Tempo de `make validate` (alvo < 10s) e tamanho do binário de teste (< 100KB).
+- Cobertura de linhas/branches do core (alvo > 80%).
+- **Cobertura de build do desktop-session** (hoje zero local; medir via CapyOS `PROFILE=full`).
 
 ## Política de atualização
 
-Atualizar:
-- A cada release tag (`v*`).
-- Quando adicionar nova suite de testes.
-- Quando mudar performance budget em release dedicada (`v0.15`, `v1.7`).
-
-Histórico preservado em commits Git; este arquivo reflete o **snapshot atual**.
+Atualizar a cada release tag (`v*`), ao adicionar suíte de testes, e ao mudar o performance budget.
+Histórico preservado em commits Git; este arquivo reflete o snapshot atual.

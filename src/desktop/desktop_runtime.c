@@ -21,6 +21,18 @@ static void desktop_net_yield(void) {
   compositor_render_cursor(ms.x, ms.y);
 }
 
+static void desktop_present_initial_frame(struct desktop_session *ds) {
+  struct mouse_state ms;
+  if (!ds) return;
+  compositor_invalidate_all();
+  compositor_render();
+  mouse_get_state(&ms);
+  compositor_render_cursor(ms.x, ms.y);
+  ds->cursor_valid = 1;
+  ds->cursor_x = ms.x;
+  ds->cursor_y = ms.y;
+}
+
 static struct desktop_session g_desktop;
 static int g_desktop_active = 0;
 static struct shell_context *g_desktop_shell_ctx = NULL;
@@ -89,19 +101,7 @@ void kernel_request_shutdown(void) {
   g_shutdown_requested = 1;
 }
 
-static inline int desktop_scheduler_tick_observed(void) {
-  struct scheduler_stats stats;
-  scheduler_stats_get(&stats);
-  return stats.total_ticks != 0;
-}
-
 static inline void desktop_idle_wait_cpu(void) {
-#if defined(__x86_64__) && !defined(UNIT_TEST)
-  if (desktop_scheduler_tick_observed()) {
-    __asm__ volatile("sti; hlt" ::: "memory");
-    return;
-  }
-#endif
   uint64_t start = pit_ticks();
   uint32_t spins = 0;
   while (pit_ticks() == start && spins++ < 1024u) {
@@ -248,9 +248,9 @@ int desktop_runtime_start(struct shell_context *ctx) {
     return -1;
   }
   net_stack_set_yield_hook(desktop_net_yield);
-  sync_and_flush_desktop();
+  desktop_present_initial_frame(&g_desktop);
+  fbcon_set_visual_muted(1);
   fbcon_print("[desktop] session started\n");
-  sync_and_flush_desktop();
   g_desktop_active = 1;
 
   /* Small state machine to distinguish a bare ESC press (exit desktop)
@@ -329,6 +329,7 @@ int desktop_runtime_start(struct shell_context *ctx) {
 
   desktop_shutdown(&g_desktop);
   net_stack_set_yield_hook((void *)0);
+  fbcon_set_visual_muted(0);
   fbcon_print("[desktop] session stopped\n");
   g_desktop_active = 0;
   g_desktop_shell_ctx = NULL;

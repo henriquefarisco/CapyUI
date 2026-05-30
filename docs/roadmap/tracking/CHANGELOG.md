@@ -2,6 +2,153 @@
 
 Mudanças por release tag, da mais recente para a mais antiga. Cada entrada é imutável após release.
 
+## [2.19.0] — 2026-05-29
+
+**Marco:** sexta fatia da trilha de **estado dos advanced widgets** (após date 2.14, color 2.15, table 2.16, autocomplete 2.17, tree 2.18). Levanta o `CHART`: array caller-owned de pontos `int32` + a **primeira redução numérica** (`chart_range` faz scan single-pass do min/max assinado). Aditivo sobre 2.18; DL schema permanece `7`.
+
+### Adicionado
+
+- Macros: `CAPYUI_API_VERSION_MAJOR/_MINOR/_PATCH` agora `2/19/0`. `CAPYUI_API_VERSION_TAG = 0x00021300`.
+- Tail fields em `struct capy_widget` (válidos só p/ `CAPY_WIDGET_CHART`): `const int32_t *chart_values` (caller-owned; NULL = sem dados) + `uint16_t chart_count`. `sizeof` 864 → 880.
+- 5 APIs em `src/widget/capy_widget.c`:
+  - `int capy_widget_set_chart_data(w, values, count)` — `count==0` limpa; `count>0` exige `values!=NULL`; fail-closed.
+  - `int capy_widget_clear_chart_data(w)` — volta a NULL/0.
+  - `int capy_widget_chart_count(w)` — nº de pontos (0 quando nenhum); `-1` em NULL/tipo.
+  - `int capy_widget_chart_value(w, index, out_value)` — bounds-checked; `-1` em `index >= count` / sem dados / NULL.
+  - `int capy_widget_chart_range(w, out_min, out_max)` — min/max assinado single-pass; 1 com dados / 0 vazio (out zerado) / -1 erro.
+- 8 testes (`test_chart_*`) em `tests/test_widget_contracts.c`. Suíte 313 → **321**.
+
+### Compatibilidade
+
+- 100% aditivo. Array caller-owned: CapyUI nunca copia/aloca/libera (zero-alloc). `capy_widget_serialize` (1.10) não serializa o dataset. DL schema permanece `7`.
+
+### Validação (externa, não executada nesta máquina)
+
+- Recomendado: `make validate` (lint + security + check-decoupling + 321 testes + version-check) e `make package`.
+
+## [2.18.0] — 2026-05-29
+
+**Marco:** quinta fatia da trilha de **estado dos advanced widgets** (após date picker 2.14, color picker 2.15, table columns 2.16, autocomplete 2.17). Levanta o `TREE`: estado de fold/indent por nó + a **primeira leitura que caminha a hierarquia** (`tree_row_visible` deriva visibilidade dos ancestrais `TREE`). Aditivo sobre 2.17; DL schema permanece `7`.
+
+### Adicionado
+
+- Macros: `CAPYUI_API_VERSION_MAJOR/_MINOR/_PATCH` agora `2/18/0`. `CAPYUI_API_VERSION_TAG = 0x00021200`.
+- Tail fields em `struct capy_widget` (válidos só p/ `CAPY_WIDGET_TREE`): `uint8_t tree_collapsed` (0 = expandido, default) + `uint16_t tree_depth` (indent). `sizeof` 856 → 864.
+- 5 APIs em `src/widget/capy_widget.c`:
+  - `int capy_widget_set_tree_collapsed(w, collapsed)` — qualquer não-zero normaliza p/ 1; `-1` em NULL/tipo.
+  - `int capy_widget_tree_is_collapsed(w)` — 1 collapsed / 0 expandido / -1 erro.
+  - `int capy_widget_set_tree_depth(w, depth)` — seta indent; `-1` em NULL/tipo.
+  - `int capy_widget_tree_depth(w)` — indent (0 na raiz) / -1 erro.
+  - `int capy_widget_tree_row_visible(w)` — caminha os pais; 0 se algum ancestral `TREE` está collapsed (só ancestrais escondem); 1 caso contrário; -1 erro.
+- 8 testes (`test_tree_*`) em `tests/test_widget_contracts.c`. Suíte 305 → **313**.
+
+### Compatibilidade
+
+- 100% aditivo. Estado de fold/depth é UI efêmero: `capy_widget_serialize` (1.10) não serializa. DL schema permanece `7`.
+
+### Validação (externa, não executada nesta máquina)
+
+- Recomendado: `make validate` (lint + security + check-decoupling + 313 testes + version-check) e `make package`.
+
+## [2.17.0] — 2026-05-29
+
+**Marco:** quarta fatia da trilha de **estado dos advanced widgets** (após date picker 2.14, color picker 2.15, table columns 2.16). Levanta o `AUTOCOMPLETE`: como a table guarda um **modelo caller-owned** (lista de strings), mas adiciona um **cursor de seleção mutável** com clamp/fail-closed. Aditivo sobre 2.16; DL schema permanece `7`.
+
+### Adicionado
+
+- Macros: `CAPYUI_API_VERSION_MAJOR/_MINOR/_PATCH` agora `2/17/0`. `CAPYUI_API_VERSION_TAG = 0x00021100`.
+- Tail fields em `struct capy_widget` (válidos só p/ `CAPY_WIDGET_AUTOCOMPLETE`): `const char *const *autocomplete_items` (caller-owned; NULL = sem lista) + `uint16_t autocomplete_count` + `int32_t autocomplete_selected` (-1 = nenhum). `sizeof` 840 → 856.
+- 6 APIs em `src/widget/capy_widget.c`:
+  - `int capy_widget_set_autocomplete(w, items, count)` — `count==0` limpa; `count>0` exige `items!=NULL`; reseta seleção p/ -1; fail-closed.
+  - `int capy_widget_clear_autocomplete(w)` — volta a NULL/0 e seleção -1.
+  - `int capy_widget_autocomplete_count(w)` — nº de sugestões (0 quando nenhuma); `-1` em NULL/tipo.
+  - `int capy_widget_autocomplete_item(w, index, out_item)` — bounds-checked; `-1` em `index >= count` / sem lista / NULL.
+  - `int capy_widget_set_autocomplete_selected(w, index)` — `-1` limpa; `0..count-1` seleciona; `-1` em `index < -1` / `index >= count`.
+  - `int capy_widget_get_autocomplete_selected(w, out_index)` — seleção viva clampada; `1` selecionado / `0` nenhum / `-1` erro.
+- 8 testes (`test_autocomplete_*`) em `tests/test_widget_contracts.c`. Suíte 297 → **305**.
+
+### Compatibilidade
+
+- 100% aditivo. Lista de strings + índice caller-owned/efêmeros: CapyUI nunca copia/aloca/libera (zero-alloc). `capy_widget_serialize` (1.10) não serializa lista nem seleção. DL schema permanece `7`.
+
+### Validação (externa, não executada nesta máquina)
+
+- Recomendado: `make validate` (lint + security + check-decoupling + 305 testes + version-check) e `make package`.
+
+## [2.16.0] — 2026-05-29
+
+**Marco:** terceira fatia da trilha de **estado dos advanced widgets** (após date picker 2.14, color picker 2.15). Levanta o `TABLE` para campos de cauda; diferente das duas fatias escalares, guarda um **array de larguras caller-owned** + contagem, com acessor **bounds-checked / fail-closed**. Aditivo sobre 2.15; DL schema permanece `7`.
+
+### Adicionado
+
+- Macros: `CAPYUI_API_VERSION_MAJOR/_MINOR/_PATCH` agora `2/16/0`. `CAPYUI_API_VERSION_TAG = 0x00021000`.
+- Tail fields em `struct capy_widget` (válidos só p/ `CAPY_WIDGET_TABLE`): `const uint16_t *table_column_widths` (caller-owned; NULL = sem modelo) + `uint16_t table_column_count`. `sizeof` 824 → 840 (o ponteiro força alinhamento de 8).
+- 4 APIs em `src/widget/capy_widget.c`:
+  - `int capy_widget_set_table_columns(w, widths, count)` — `count==0` limpa; `count>0` exige `widths!=NULL`; fail-closed (modelo intacto em falha).
+  - `int capy_widget_clear_table_columns(w)` — volta a NULL/0.
+  - `int capy_widget_table_column_count(w)` — nº de colunas (0 quando nenhuma); `-1` em NULL/tipo.
+  - `int capy_widget_table_column_width(w, index, out_width)` — bounds-checked; `-1` em `index >= count` / sem modelo / NULL.
+- 8 testes (`test_table_*`) em `tests/test_widget_contracts.c`. Suíte 289 → **297**.
+
+### Compatibilidade
+
+- 100% aditivo. Array caller-owned: CapyUI nunca copia/aloca/libera (zero-alloc). `capy_widget_serialize` (1.10) não serializa o modelo de coluna. DL schema permanece `7`.
+
+### Validação (externa, não executada nesta máquina)
+
+- Recomendado: `make validate` (lint + security + check-decoupling + 297 testes + version-check) e `make package`.
+
+## [2.15.0] — 2026-05-29
+
+**Marco:** segunda fatia da trilha de **estado dos advanced widgets** (após o date picker em 2.14). Levanta o `COLOR_PICKER` de `user_data` para campos de cauda de primeira classe. Aditivo sobre 2.14; DL schema permanece `7`.
+
+### Adicionado
+
+- Macros: `CAPYUI_API_VERSION_MAJOR/_MINOR/_PATCH` agora `2/15/0`. `CAPYUI_API_VERSION_TAG = 0x00020F00`.
+- Tail fields em `struct capy_widget` (válidos só p/ `CAPY_WIDGET_COLOR_PICKER`): `uint32_t picker_color` (0xAARRGGBB) + `uint8_t picker_color_set` (flag de presença). `sizeof` 816 → 824.
+- 4 APIs em `src/widget/capy_widget.c`:
+  - `uint32_t capy_color_pack(uint8_t r, uint8_t g, uint8_t b, uint8_t a)` — 0xAARRGGBB, cast-before-shift (sem UB no byte de alpha).
+  - `int capy_widget_set_color(w, argb)` — armazena + marca set; `-1` fail-closed em NULL/tipo.
+  - `int capy_widget_clear_color(w)` — volta ao unset (cor 0, flag 0).
+  - `int capy_widget_get_color(w, out)` — `1` set / `0` unset (escreve 0) / `-1` NULL/tipo/out NULL.
+- 8 testes novos em `tests/test_widget_contracts.c` (`test_color_*`). Total 281 → **289** (pinado em `make version-check`).
+
+### ABI
+
+- `capy-ui-widget` `2.14` → **`2.15`** (aditivo; sem remoções/renomeações).
+- `capy-ui-desktop-session` permanece `1`. Display-list schema permanece `7`.
+
+## [2.14.0] — 2026-05-29
+
+**Marco:** primeira fatia de **estado dos advanced widgets**. Os 8 advanced widgets de 2.1 eram enum-only; esta release levanta o `DATE_PICKER` de `user_data` para um campo de cauda de primeira classe, estabelecendo o padrão aditivo das próximas famílias (TABLE/TREE/COLOR_PICKER/...). Aditivo sobre 2.13; DL schema permanece `7`.
+
+### Adicionado
+
+- Macros: `CAPYUI_API_VERSION_MAJOR/_MINOR/_PATCH` agora `2/14/0`. `CAPYUI_API_VERSION_TAG = 0x00020E00`.
+- `struct capy_date { uint16_t year; uint8_t month; uint8_t day; }` em `capy_widget.h` (0 em qualquer campo = unset).
+- Tail field `struct capy_date date_value;` em `struct capy_widget` (válido só quando `type == CAPY_WIDGET_DATE_PICKER`; `sizeof` +4B).
+- 4 APIs em `src/widget/capy_widget.c`:
+  - `int capy_date_is_valid(year, month, day)` — predicado de calendário Gregoriano proléptico (bissexto `4/100/400`).
+  - `int capy_widget_set_date(w, year, month, day)` — valida + armazena; `-1` fail-closed em NULL/tipo/data inválida (valor anterior intacto).
+  - `int capy_widget_clear_date(w)` — reseta para unset.
+  - `int capy_widget_get_date(w, out)` — `1` set válido / `0` unset / `-1` NULL/tipo/out NULL.
+- 8 testes novos em `tests/test_widget_contracts.c` (`test_date_*`). Total 273 → **281** (pinado em `make version-check`).
+
+### Infra / higiene (não-ABI)
+
+- `make check-decoupling` (agora em `make validate`): garante que `src/widget` não inclua headers CapyOS — gate documentado antes só rodado à mão.
+- `make lint-desktop-session CAPYOS_INCLUDE=...`: gate externo best-effort para o desktop-session (gate canônico continua `CapyOS make all64 PROFILE=full`).
+- `tools/abi_guard.sh` + `.github/workflows/abi-guard.yml`: implementa o guard de remoção de símbolos exigido pela `deprecation-policy.md`.
+- Novo doc `docs/roadmap/contracts/desktop-session-coupling.md` + ADR-0006 / ADR-0007 em `tracking/DECISIONS.md`.
+- `README.md` corrige o pin CapyOS para `0.8.0-alpha.260+20260525` (alinha com `docs/compatibility.md`).
+- `docs/roadmap/long-term/v3.0-vision-platform.md` corrige "DL schema 8 → 9" para "7 → 9" e a dependência obsoleta.
+
+### ABI
+
+- `capy-ui-widget` `2.13` → **`2.14`** (aditivo; sem remoções/renomeações).
+- `capy-ui-desktop-session` permanece `1`.
+- Display-list schema permanece `7`.
+
 # [2.13.1] — 2026-05-23
 
 **Marco:** hotfix de packaging e alinhamento do release corrente após `2.13.0`. A ABI `capy-ui-widget` continua em `2.13`; este corte existe para publicar os novos assets e manter os URLs tag-pinned usados pelo CapyOS.

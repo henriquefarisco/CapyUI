@@ -53,6 +53,26 @@ static uint32_t di_dl_usable_width(void) {
   return g_di.screen_w - DESKTOP_ICON_PAD_RIGHT;
 }
 
+static int di_dl_rect_intersects(int32_t x,
+                                 int32_t y,
+                                 uint32_t width,
+                                 uint32_t height,
+                                 const struct gui_rect *rect) {
+  int32_t x1;
+  int32_t y1;
+  int32_t rx1;
+  int32_t ry1;
+  if (!rect || width == 0u || height == 0u ||
+      rect->width == 0u || rect->height == 0u) {
+    return 0;
+  }
+  x1 = x + (int32_t)width;
+  y1 = y + (int32_t)height;
+  rx1 = rect->x + (int32_t)rect->width;
+  ry1 = rect->y + (int32_t)rect->height;
+  return x < rx1 && rect->x < x1 && y < ry1 && rect->y < y1;
+}
+
 static void desktop_icons_dl_prepare(struct capy_display_list *dl) {
   if (!dl) return;
   dl->cmds = g_desktop_icons_dl_cmds;
@@ -338,6 +358,8 @@ static int desktop_icons_dl_emit_icon(struct capy_display_list *dl,
 
 int desktop_icons_render_display_list(struct gui_surface *s) {
   struct capy_display_list dl;
+  struct gui_rect damage_clip;
+  const struct gui_rect *clip = NULL;
   const struct gui_theme_palette *theme = compositor_theme();
   const struct font *f = font_default();
   uint32_t usable_h;
@@ -347,14 +369,27 @@ int desktop_icons_render_display_list(struct gui_surface *s) {
   g_di.screen_h = s->height;
   usable_h = di_dl_usable_height();
   usable_w = di_dl_usable_width();
+  if (compositor_current_render_clip(&damage_clip)) clip = &damage_clip;
   desktop_icons_dl_prepare(&dl);
   if (desktop_icons_dl_emit_wallpaper(&dl, s, theme) != 0) return -1;
-  if (!f || usable_h == 0u) return capyui_display_adapter_render(&dl, s, 0, 0);
+  if (!f || usable_h == 0u) return capyui_display_adapter_render(&dl, s, clip, 0);
   for (uint32_t i = 0u; i < g_di.count; i++) {
-    int rc = desktop_icons_dl_emit_icon(&dl, f, theme, i, usable_w, usable_h);
+    int32_t x = 0;
+    int32_t y = 0;
+    int rc;
+    di_icon_position(i, &x, &y);
+    if (x + (int32_t)DESKTOP_ICON_CELL_W > (int32_t)usable_w) break;
+    if (y + (int32_t)DESKTOP_ICON_CELL_H > (int32_t)usable_h) break;
+    if (clip && !di_dl_rect_intersects(x - 4, y - 4,
+                                       DESKTOP_ICON_CELL_W + 8u,
+                                       DESKTOP_ICON_CELL_H + 8u,
+                                       clip)) {
+      continue;
+    }
+    rc = desktop_icons_dl_emit_icon(&dl, f, theme, i, usable_w, usable_h);
     if (rc < 0) return -1;
     if (rc > 0) break;
   }
-  return capyui_display_adapter_render(&dl, s, 0, 0);
+  return capyui_display_adapter_render(&dl, s, clip, 0);
 }
 #endif

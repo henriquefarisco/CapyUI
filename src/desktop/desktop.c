@@ -312,16 +312,27 @@ void desktop_init(struct desktop_session *ds, uint32_t *fb, uint32_t w,
   wm_init(&ds->wm, w, h);
   desktop_apply_theme(ds);
 
-  /* Etapa UX W7-ish (2026-05-03): wallpaper renderiza icons das
-   * pastas/arquivos do home do user (a la Desktop do W7). Para
-   * usuarios sem home definido cai pra root. Compositor recebe o
-   * paint callback; clique e right-click no espaco vazio sao
-   * roteados pra desktop_icons em desktop_handle_mouse. */
+  /* Etapa UX W7-ish (2026-05-03): wallpaper renderiza os icons da pasta
+   * Desktop do user (a la Desktop do W7/Ubuntu). A pasta <home>/Desktop e
+   * provisionada pelo core CapyOS (user_home_prepare). Para usuarios sem
+   * home definido cai pra root. Compositor recebe o paint callback; clique
+   * e right-click no espaco vazio sao roteados pra desktop_icons em
+   * desktop_handle_mouse. */
   {
     struct session_context *sess = session_active();
     const struct user_record *user = sess ? session_user(sess) : NULL;
     const char *home = (user && user->home[0]) ? user->home : "/";
-    desktop_icons_init(home, TASKBAR_HEIGHT);
+    /* Render <home>/Desktop, not the whole home: the home now holds
+     * Desktop/Documents/Personal/Professional and only Desktop belongs on
+     * the wallpaper. Fall back to the home root when no user home exists. */
+    char desktop_path[160];
+    const char *icons_path = home;
+    if (user && user->home[0]) {
+      kstrcpy(desktop_path, sizeof(desktop_path), home);
+      kbuf_append(desktop_path, sizeof(desktop_path), "/Desktop");
+      icons_path = desktop_path;
+    }
+    desktop_icons_init(icons_path, TASKBAR_HEIGHT);
     compositor_set_desktop_callback(desktop_icons_paint);
   }
 

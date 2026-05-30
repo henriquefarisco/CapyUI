@@ -5272,11 +5272,11 @@ static void plugin_test_destroy(struct capy_plugin_context *pc) {
 }
 
 static void test_plugin_version_tag_macro(void) {
-  /* (major << 16) | (minor << 8) | patch. For 2.13.0 -> 0x00020D00. */
+  /* (major << 16) | (minor << 8) | patch. For 2.19.0 -> 0x00021300. */
   EXPECT(CAPYUI_API_VERSION_MAJOR == 2);
-  EXPECT(CAPYUI_API_VERSION_MINOR == 13);
+  EXPECT(CAPYUI_API_VERSION_MINOR == 19);
   EXPECT(CAPYUI_API_VERSION_PATCH == 0);
-  EXPECT(CAPYUI_API_VERSION_TAG == 0x00020D00u);
+  EXPECT(CAPYUI_API_VERSION_TAG == 0x00021300u);
 }
 
 static void test_plugin_register_valid_descriptor(void) {
@@ -7194,7 +7194,7 @@ static void test_v1_freeze_markers(void) {
   /* Public version macros must line up with VERSION + Makefile while the
    * v1 freeze anchors remain present. */
   EXPECT(CAPYUI_API_VERSION_MAJOR == 2);
-  EXPECT(CAPYUI_API_VERSION_MINOR == 13);
+  EXPECT(CAPYUI_API_VERSION_MINOR == 19);
   EXPECT(CAPYUI_API_VERSION_PATCH == 0);
   /* CAPYUI_API_DEPRECATED is invocable as a macro and accepts a string lit;
    * we already saw it expand above on capyui_v1_freeze_canary. The canary
@@ -7228,6 +7228,849 @@ static void test_v1_freeze_markers(void) {
   EXPECT((int)CAPY_PLURAL_OTHER > (int)CAPY_PLURAL_EN);              /* 0.13  */
   EXPECT((int)CAPY_WIDGET_EVENT_GAMEPAD >                            /* 0.10  */
          (int)CAPY_WIDGET_EVENT_POINTER_UP);
+}
+
+/* ── v2.14: advanced widget state — date picker (since 2.14.0) ──────────── */
+
+static void test_date_set_valid_and_get(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *dp;
+  struct capy_date d = {0u, 0u, 0u};
+  capy_widget_context_init(&ctx, &allocator);
+  dp = capy_widget_create(&ctx, CAPY_WIDGET_DATE_PICKER);
+  EXPECT(dp != 0);
+  EXPECT(capy_widget_set_date(dp, 2024u, 2u, 29u) == 0); /* leap day valid */
+  EXPECT(capy_widget_get_date(dp, &d) == 1);
+  EXPECT(d.year == 2024u && d.month == 2u && d.day == 29u);
+  capy_widget_destroy(dp);
+}
+
+static void test_date_unset_get_returns_zero(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *dp;
+  struct capy_date d = {1u, 1u, 1u};
+  capy_widget_context_init(&ctx, &allocator);
+  dp = capy_widget_create(&ctx, CAPY_WIDGET_DATE_PICKER);
+  EXPECT(dp != 0);
+  /* fresh widget: unset → get returns 0 and copies the zeroed value */
+  EXPECT(capy_widget_get_date(dp, &d) == 0);
+  EXPECT(d.year == 0u && d.month == 0u && d.day == 0u);
+  capy_widget_destroy(dp);
+}
+
+static void test_date_invalid_rejected_fail_closed(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *dp;
+  struct capy_date d = {0u, 0u, 0u};
+  capy_widget_context_init(&ctx, &allocator);
+  dp = capy_widget_create(&ctx, CAPY_WIDGET_DATE_PICKER);
+  EXPECT(dp != 0);
+  EXPECT(capy_widget_set_date(dp, 2023u, 6u, 15u) == 0); /* known-good */
+  EXPECT(capy_widget_set_date(dp, 2023u, 2u, 29u) == -1); /* not a leap year */
+  EXPECT(capy_widget_set_date(dp, 2024u, 13u, 1u) == -1); /* month > 12 */
+  EXPECT(capy_widget_set_date(dp, 2024u, 4u, 31u) == -1); /* Apr has 30 */
+  EXPECT(capy_widget_set_date(dp, 2024u, 0u, 10u) == -1); /* month 0 */
+  EXPECT(capy_widget_set_date(dp, 2024u, 5u, 0u) == -1);  /* day 0 */
+  EXPECT(capy_widget_set_date(dp, 0u, 5u, 10u) == -1);    /* year 0 */
+  /* the previously stored value is left unchanged (fail-closed) */
+  EXPECT(capy_widget_get_date(dp, &d) == 1);
+  EXPECT(d.year == 2023u && d.month == 6u && d.day == 15u);
+  capy_widget_destroy(dp);
+}
+
+static void test_date_clear_resets(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *dp;
+  struct capy_date d = {0u, 0u, 0u};
+  capy_widget_context_init(&ctx, &allocator);
+  dp = capy_widget_create(&ctx, CAPY_WIDGET_DATE_PICKER);
+  EXPECT(dp != 0);
+  EXPECT(capy_widget_set_date(dp, 2000u, 12u, 31u) == 0);
+  EXPECT(capy_widget_get_date(dp, &d) == 1);
+  EXPECT(capy_widget_clear_date(dp) == 0);
+  EXPECT(capy_widget_get_date(dp, &d) == 0);
+  EXPECT(d.year == 0u && d.month == 0u && d.day == 0u);
+  capy_widget_destroy(dp);
+}
+
+static void test_date_wrong_widget_type_rejected(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *btn;
+  struct capy_date d = {0u, 0u, 0u};
+  capy_widget_context_init(&ctx, &allocator);
+  btn = capy_widget_create(&ctx, CAPY_WIDGET_BUTTON);
+  EXPECT(btn != 0);
+  EXPECT(capy_widget_set_date(btn, 2024u, 1u, 1u) == -1);
+  EXPECT(capy_widget_clear_date(btn) == -1);
+  EXPECT(capy_widget_get_date(btn, &d) == -1);
+  capy_widget_destroy(btn);
+}
+
+static void test_date_is_valid_calendar_predicate(void) {
+  EXPECT(capy_date_is_valid(2000u, 2u, 29u) == 1); /* div by 400 → leap */
+  EXPECT(capy_date_is_valid(1900u, 2u, 29u) == 0); /* div 100 not 400 */
+  EXPECT(capy_date_is_valid(2024u, 2u, 29u) == 1); /* div 4 not 100 → leap */
+  EXPECT(capy_date_is_valid(2023u, 2u, 28u) == 1);
+  EXPECT(capy_date_is_valid(2023u, 2u, 29u) == 0);
+  EXPECT(capy_date_is_valid(2024u, 1u, 31u) == 1);
+  EXPECT(capy_date_is_valid(2024u, 4u, 30u) == 1);
+  EXPECT(capy_date_is_valid(2024u, 4u, 31u) == 0);
+  EXPECT(capy_date_is_valid(2024u, 12u, 31u) == 1);
+  EXPECT(capy_date_is_valid(2024u, 13u, 1u) == 0);
+  EXPECT(capy_date_is_valid(1u, 1u, 1u) == 1);
+}
+
+static void test_date_null_guards(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *dp;
+  capy_widget_context_init(&ctx, &allocator);
+  dp = capy_widget_create(&ctx, CAPY_WIDGET_DATE_PICKER);
+  EXPECT(dp != 0);
+  EXPECT(capy_widget_set_date(0, 2024u, 1u, 1u) == -1);
+  EXPECT(capy_widget_clear_date(0) == -1);
+  EXPECT(capy_widget_get_date(0, 0) == -1);
+  EXPECT(capy_widget_get_date(dp, 0) == -1); /* NULL out */
+  capy_widget_destroy(dp);
+}
+
+static void test_date_determinism(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *dp;
+  struct capy_date a = {0u, 0u, 0u};
+  struct capy_date b = {0u, 0u, 0u};
+  capy_widget_context_init(&ctx, &allocator);
+  dp = capy_widget_create(&ctx, CAPY_WIDGET_DATE_PICKER);
+  EXPECT(dp != 0);
+  EXPECT(capy_widget_set_date(dp, 2026u, 5u, 29u) == 0);
+  EXPECT(capy_widget_get_date(dp, &a) == 1);
+  EXPECT(capy_widget_get_date(dp, &b) == 1);
+  EXPECT(a.year == b.year && a.month == b.month && a.day == b.day);
+  capy_widget_destroy(dp);
+}
+
+/* ── v2.15: advanced widget state — color picker (since 2.15.0) ─────────── */
+
+static void test_color_pack_channel_order(void) {
+  /* 0xAARRGGBB: alpha high byte, then red, green, blue. */
+  uint32_t c = capy_color_pack(0x12u, 0x34u, 0x56u, 0x78u);
+  EXPECT(c == 0x78123456u);
+  EXPECT(((c >> 24) & 0xFFu) == 0x78u); /* alpha */
+  EXPECT(((c >> 16) & 0xFFu) == 0x12u); /* red */
+  EXPECT(((c >> 8) & 0xFFu) == 0x34u);  /* green */
+  EXPECT((c & 0xFFu) == 0x56u);         /* blue */
+}
+
+static void test_color_pack_extremes(void) {
+  EXPECT(capy_color_pack(0xFFu, 0xFFu, 0xFFu, 0xFFu) == 0xFFFFFFFFu);
+  EXPECT(capy_color_pack(0u, 0u, 0u, 0u) == 0u);
+  /* opaque black: the alpha high byte must set without signed-shift UB. */
+  EXPECT(capy_color_pack(0u, 0u, 0u, 0xFFu) == 0xFF000000u);
+}
+
+static void test_color_set_and_get(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *cp;
+  uint32_t got = 0u;
+  capy_widget_context_init(&ctx, &allocator);
+  cp = capy_widget_create(&ctx, CAPY_WIDGET_COLOR_PICKER);
+  EXPECT(cp != 0);
+  EXPECT(capy_widget_set_color(cp, 0x80112233u) == 0);
+  EXPECT(capy_widget_get_color(cp, &got) == 1);
+  EXPECT(got == 0x80112233u);
+  capy_widget_destroy(cp);
+}
+
+static void test_color_unset_get_returns_zero(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *cp;
+  uint32_t got = 0xDEADBEEFu;
+  capy_widget_context_init(&ctx, &allocator);
+  cp = capy_widget_create(&ctx, CAPY_WIDGET_COLOR_PICKER);
+  EXPECT(cp != 0);
+  /* fresh widget: unset → get returns 0 and writes 0. */
+  EXPECT(capy_widget_get_color(cp, &got) == 0);
+  EXPECT(got == 0u);
+  capy_widget_destroy(cp);
+}
+
+static void test_color_clear_resets(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *cp;
+  uint32_t got = 0u;
+  capy_widget_context_init(&ctx, &allocator);
+  cp = capy_widget_create(&ctx, CAPY_WIDGET_COLOR_PICKER);
+  EXPECT(cp != 0);
+  EXPECT(capy_widget_set_color(cp, 0xFFAABBCCu) == 0);
+  EXPECT(capy_widget_get_color(cp, &got) == 1);
+  EXPECT(capy_widget_clear_color(cp) == 0);
+  EXPECT(capy_widget_get_color(cp, &got) == 0);
+  EXPECT(got == 0u);
+  capy_widget_destroy(cp);
+}
+
+static void test_color_wrong_widget_type_rejected(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *btn;
+  uint32_t got = 0u;
+  capy_widget_context_init(&ctx, &allocator);
+  btn = capy_widget_create(&ctx, CAPY_WIDGET_BUTTON);
+  EXPECT(btn != 0);
+  EXPECT(capy_widget_set_color(btn, 0x11223344u) == -1);
+  EXPECT(capy_widget_clear_color(btn) == -1);
+  EXPECT(capy_widget_get_color(btn, &got) == -1);
+  capy_widget_destroy(btn);
+}
+
+static void test_color_null_guards(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *cp;
+  capy_widget_context_init(&ctx, &allocator);
+  cp = capy_widget_create(&ctx, CAPY_WIDGET_COLOR_PICKER);
+  EXPECT(cp != 0);
+  EXPECT(capy_widget_set_color(0, 0x1u) == -1);
+  EXPECT(capy_widget_clear_color(0) == -1);
+  EXPECT(capy_widget_get_color(0, 0) == -1);
+  EXPECT(capy_widget_get_color(cp, 0) == -1); /* NULL out */
+  capy_widget_destroy(cp);
+}
+
+static void test_color_determinism(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *cp;
+  uint32_t a = 0u;
+  uint32_t b = 1u;
+  capy_widget_context_init(&ctx, &allocator);
+  cp = capy_widget_create(&ctx, CAPY_WIDGET_COLOR_PICKER);
+  EXPECT(cp != 0);
+  EXPECT(capy_widget_set_color(cp, capy_color_pack(10u, 20u, 30u, 40u)) == 0);
+  EXPECT(capy_widget_get_color(cp, &a) == 1);
+  EXPECT(capy_widget_get_color(cp, &b) == 1);
+  EXPECT(a == b);
+  EXPECT(a == capy_color_pack(10u, 20u, 30u, 40u));
+  capy_widget_destroy(cp);
+}
+
+/* ── v2.16: advanced widget state — table columns (since 2.16.0) ────────── */
+
+static void test_table_set_and_query(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *tbl;
+  const uint16_t widths[3] = {100u, 200u, 150u};
+  uint16_t w0 = 0u;
+  uint16_t w1 = 0u;
+  uint16_t w2 = 0u;
+  capy_widget_context_init(&ctx, &allocator);
+  tbl = capy_widget_create(&ctx, CAPY_WIDGET_TABLE);
+  EXPECT(tbl != 0);
+  EXPECT(capy_widget_set_table_columns(tbl, widths, 3u) == 0);
+  EXPECT(capy_widget_table_column_count(tbl) == 3);
+  EXPECT(capy_widget_table_column_width(tbl, 0u, &w0) == 0 && w0 == 100u);
+  EXPECT(capy_widget_table_column_width(tbl, 1u, &w1) == 0 && w1 == 200u);
+  EXPECT(capy_widget_table_column_width(tbl, 2u, &w2) == 0 && w2 == 150u);
+  capy_widget_destroy(tbl);
+}
+
+static void test_table_index_out_of_range(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *tbl;
+  const uint16_t widths[2] = {10u, 20u};
+  uint16_t out = 0u;
+  capy_widget_context_init(&ctx, &allocator);
+  tbl = capy_widget_create(&ctx, CAPY_WIDGET_TABLE);
+  EXPECT(tbl != 0);
+  EXPECT(capy_widget_set_table_columns(tbl, widths, 2u) == 0);
+  EXPECT(capy_widget_table_column_width(tbl, 2u, &out) == -1);   /* index == count */
+  EXPECT(capy_widget_table_column_width(tbl, 100u, &out) == -1); /* far past end */
+  capy_widget_destroy(tbl);
+}
+
+static void test_table_set_zero_count_clears(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *tbl;
+  const uint16_t widths[2] = {10u, 20u};
+  uint16_t out = 0u;
+  capy_widget_context_init(&ctx, &allocator);
+  tbl = capy_widget_create(&ctx, CAPY_WIDGET_TABLE);
+  EXPECT(tbl != 0);
+  EXPECT(capy_widget_set_table_columns(tbl, widths, 2u) == 0);
+  EXPECT(capy_widget_table_column_count(tbl) == 2);
+  /* count 0 clears even when a (ignored) pointer is passed */
+  EXPECT(capy_widget_set_table_columns(tbl, widths, 0u) == 0);
+  EXPECT(capy_widget_table_column_count(tbl) == 0);
+  EXPECT(capy_widget_table_column_width(tbl, 0u, &out) == -1);
+  capy_widget_destroy(tbl);
+}
+
+static void test_table_set_null_widths_rejected(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *tbl;
+  const uint16_t widths[1] = {42u};
+  capy_widget_context_init(&ctx, &allocator);
+  tbl = capy_widget_create(&ctx, CAPY_WIDGET_TABLE);
+  EXPECT(tbl != 0);
+  EXPECT(capy_widget_set_table_columns(tbl, widths, 1u) == 0); /* known-good */
+  EXPECT(capy_widget_set_table_columns(tbl, 0, 3u) == -1);     /* NULL + count>0 */
+  /* fail-closed: previous model intact */
+  EXPECT(capy_widget_table_column_count(tbl) == 1);
+  capy_widget_destroy(tbl);
+}
+
+static void test_table_clear(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *tbl;
+  const uint16_t widths[2] = {5u, 6u};
+  uint16_t out = 0u;
+  capy_widget_context_init(&ctx, &allocator);
+  tbl = capy_widget_create(&ctx, CAPY_WIDGET_TABLE);
+  EXPECT(tbl != 0);
+  EXPECT(capy_widget_set_table_columns(tbl, widths, 2u) == 0);
+  EXPECT(capy_widget_clear_table_columns(tbl) == 0);
+  EXPECT(capy_widget_table_column_count(tbl) == 0);
+  EXPECT(capy_widget_table_column_width(tbl, 0u, &out) == -1);
+  capy_widget_destroy(tbl);
+}
+
+static void test_table_wrong_widget_type_rejected(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *btn;
+  const uint16_t widths[1] = {1u};
+  uint16_t out = 0u;
+  capy_widget_context_init(&ctx, &allocator);
+  btn = capy_widget_create(&ctx, CAPY_WIDGET_BUTTON);
+  EXPECT(btn != 0);
+  EXPECT(capy_widget_set_table_columns(btn, widths, 1u) == -1);
+  EXPECT(capy_widget_clear_table_columns(btn) == -1);
+  EXPECT(capy_widget_table_column_count(btn) == -1);
+  EXPECT(capy_widget_table_column_width(btn, 0u, &out) == -1);
+  capy_widget_destroy(btn);
+}
+
+static void test_table_null_guards(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *tbl;
+  const uint16_t widths[1] = {1u};
+  uint16_t out = 0u;
+  capy_widget_context_init(&ctx, &allocator);
+  tbl = capy_widget_create(&ctx, CAPY_WIDGET_TABLE);
+  EXPECT(tbl != 0);
+  EXPECT(capy_widget_set_table_columns(0, widths, 1u) == -1);
+  EXPECT(capy_widget_clear_table_columns(0) == -1);
+  EXPECT(capy_widget_table_column_count(0) == -1);
+  EXPECT(capy_widget_table_column_width(0, 0u, &out) == -1);
+  EXPECT(capy_widget_set_table_columns(tbl, widths, 1u) == 0);
+  EXPECT(capy_widget_table_column_width(tbl, 0u, 0) == -1); /* NULL out */
+  capy_widget_destroy(tbl);
+}
+
+static void test_table_default_no_columns(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *tbl;
+  uint16_t out = 0u;
+  capy_widget_context_init(&ctx, &allocator);
+  tbl = capy_widget_create(&ctx, CAPY_WIDGET_TABLE);
+  EXPECT(tbl != 0);
+  /* fresh TABLE: no model → count 0, any width query -1 */
+  EXPECT(capy_widget_table_column_count(tbl) == 0);
+  EXPECT(capy_widget_table_column_width(tbl, 0u, &out) == -1);
+  capy_widget_destroy(tbl);
+}
+
+/* ── v2.17: advanced widget state — autocomplete suggestions (since 2.17.0) ─ */
+
+static void test_autocomplete_set_and_query(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *ac;
+  const char *const items[] = {"apple", "apricot", "avocado"};
+  const char *got = 0;
+  capy_widget_context_init(&ctx, &allocator);
+  ac = capy_widget_create(&ctx, CAPY_WIDGET_AUTOCOMPLETE);
+  EXPECT(ac != 0);
+  EXPECT(capy_widget_set_autocomplete(ac, items, 3u) == 0);
+  EXPECT(capy_widget_autocomplete_count(ac) == 3);
+  EXPECT(capy_widget_autocomplete_item(ac, 0u, &got) == 0 && got == items[0]);
+  EXPECT(capy_widget_autocomplete_item(ac, 2u, &got) == 0 && got == items[2]);
+  capy_widget_destroy(ac);
+}
+
+static void test_autocomplete_item_out_of_range(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *ac;
+  const char *const items[] = {"x", "y"};
+  const char *got = 0;
+  capy_widget_context_init(&ctx, &allocator);
+  ac = capy_widget_create(&ctx, CAPY_WIDGET_AUTOCOMPLETE);
+  EXPECT(ac != 0);
+  EXPECT(capy_widget_autocomplete_item(ac, 0u, &got) == -1); /* no list yet */
+  EXPECT(capy_widget_set_autocomplete(ac, items, 2u) == 0);
+  EXPECT(capy_widget_autocomplete_item(ac, 2u, &got) == -1); /* index == count */
+  EXPECT(capy_widget_autocomplete_item(ac, 50u, &got) == -1);
+  capy_widget_destroy(ac);
+}
+
+static void test_autocomplete_set_zero_count_clears(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *ac;
+  const char *const items[] = {"a", "b"};
+  const char *got = 0;
+  capy_widget_context_init(&ctx, &allocator);
+  ac = capy_widget_create(&ctx, CAPY_WIDGET_AUTOCOMPLETE);
+  EXPECT(ac != 0);
+  EXPECT(capy_widget_set_autocomplete(ac, items, 2u) == 0);
+  EXPECT(capy_widget_autocomplete_count(ac) == 2);
+  /* count 0 clears even when a (ignored) pointer is passed */
+  EXPECT(capy_widget_set_autocomplete(ac, items, 0u) == 0);
+  EXPECT(capy_widget_autocomplete_count(ac) == 0);
+  EXPECT(capy_widget_autocomplete_item(ac, 0u, &got) == -1);
+  capy_widget_destroy(ac);
+}
+
+static void test_autocomplete_set_null_items_rejected(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *ac;
+  const char *const items[] = {"keep"};
+  capy_widget_context_init(&ctx, &allocator);
+  ac = capy_widget_create(&ctx, CAPY_WIDGET_AUTOCOMPLETE);
+  EXPECT(ac != 0);
+  EXPECT(capy_widget_set_autocomplete(ac, items, 1u) == 0); /* known-good */
+  EXPECT(capy_widget_set_autocomplete(ac, 0, 3u) == -1);    /* NULL + count>0 */
+  /* fail-closed: previous model intact */
+  EXPECT(capy_widget_autocomplete_count(ac) == 1);
+  capy_widget_destroy(ac);
+}
+
+static void test_autocomplete_clear(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *ac;
+  const char *const items[] = {"a", "b"};
+  const char *got = 0;
+  int32_t sel = 0;
+  capy_widget_context_init(&ctx, &allocator);
+  ac = capy_widget_create(&ctx, CAPY_WIDGET_AUTOCOMPLETE);
+  EXPECT(ac != 0);
+  EXPECT(capy_widget_set_autocomplete(ac, items, 2u) == 0);
+  EXPECT(capy_widget_set_autocomplete_selected(ac, 1) == 0);
+  EXPECT(capy_widget_clear_autocomplete(ac) == 0);
+  EXPECT(capy_widget_autocomplete_count(ac) == 0);
+  EXPECT(capy_widget_autocomplete_item(ac, 0u, &got) == -1);
+  EXPECT(capy_widget_get_autocomplete_selected(ac, &sel) == 0 && sel == -1);
+  capy_widget_destroy(ac);
+}
+
+static void test_autocomplete_selection_clamp(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *ac;
+  const char *const three[] = {"alpha", "beta", "gamma"};
+  const char *const one[] = {"solo"};
+  int32_t sel = 99;
+  capy_widget_context_init(&ctx, &allocator);
+  ac = capy_widget_create(&ctx, CAPY_WIDGET_AUTOCOMPLETE);
+  EXPECT(ac != 0);
+  EXPECT(capy_widget_set_autocomplete(ac, three, 3u) == 0);
+  /* fresh list -> nothing selected */
+  EXPECT(capy_widget_get_autocomplete_selected(ac, &sel) == 0 && sel == -1);
+  /* select a valid entry */
+  EXPECT(capy_widget_set_autocomplete_selected(ac, 1) == 0);
+  EXPECT(capy_widget_get_autocomplete_selected(ac, &sel) == 1 && sel == 1);
+  /* clear selection with -1 */
+  EXPECT(capy_widget_set_autocomplete_selected(ac, -1) == 0);
+  EXPECT(capy_widget_get_autocomplete_selected(ac, &sel) == 0 && sel == -1);
+  /* out-of-range rejected (>= count and < -1) */
+  EXPECT(capy_widget_set_autocomplete_selected(ac, 3) == -1);
+  EXPECT(capy_widget_set_autocomplete_selected(ac, -2) == -1);
+  /* select, then swap to a shorter list -> selection resets to none */
+  EXPECT(capy_widget_set_autocomplete_selected(ac, 2) == 0);
+  EXPECT(capy_widget_set_autocomplete(ac, one, 1u) == 0);
+  EXPECT(capy_widget_get_autocomplete_selected(ac, &sel) == 0 && sel == -1);
+  capy_widget_destroy(ac);
+}
+
+static void test_autocomplete_wrong_widget_type_rejected(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *btn;
+  const char *const items[] = {"a"};
+  const char *got = 0;
+  int32_t sel = 0;
+  capy_widget_context_init(&ctx, &allocator);
+  btn = capy_widget_create(&ctx, CAPY_WIDGET_BUTTON);
+  EXPECT(btn != 0);
+  EXPECT(capy_widget_set_autocomplete(btn, items, 1u) == -1);
+  EXPECT(capy_widget_clear_autocomplete(btn) == -1);
+  EXPECT(capy_widget_autocomplete_count(btn) == -1);
+  EXPECT(capy_widget_autocomplete_item(btn, 0u, &got) == -1);
+  EXPECT(capy_widget_set_autocomplete_selected(btn, 0) == -1);
+  EXPECT(capy_widget_get_autocomplete_selected(btn, &sel) == -1);
+  capy_widget_destroy(btn);
+}
+
+static void test_autocomplete_null_guards(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *ac;
+  const char *const items[] = {"a"};
+  const char *got = 0;
+  int32_t sel = 0;
+  capy_widget_context_init(&ctx, &allocator);
+  ac = capy_widget_create(&ctx, CAPY_WIDGET_AUTOCOMPLETE);
+  EXPECT(ac != 0);
+  EXPECT(capy_widget_set_autocomplete(0, items, 1u) == -1);
+  EXPECT(capy_widget_clear_autocomplete(0) == -1);
+  EXPECT(capy_widget_autocomplete_count(0) == -1);
+  EXPECT(capy_widget_autocomplete_item(0, 0u, &got) == -1);
+  EXPECT(capy_widget_set_autocomplete_selected(0, 0) == -1);
+  EXPECT(capy_widget_get_autocomplete_selected(0, &sel) == -1);
+  EXPECT(capy_widget_set_autocomplete(ac, items, 1u) == 0);
+  EXPECT(capy_widget_autocomplete_item(ac, 0u, 0) == -1);     /* NULL out_item */
+  EXPECT(capy_widget_get_autocomplete_selected(ac, 0) == -1); /* NULL out_index */
+  capy_widget_destroy(ac);
+}
+
+/* ── v2.18: advanced widget state — tree hierarchy (since 2.18.0) ───────── */
+
+static void test_tree_collapsed_default_expanded(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *node;
+  capy_widget_context_init(&ctx, &allocator);
+  node = capy_widget_create(&ctx, CAPY_WIDGET_TREE);
+  EXPECT(node != 0);
+  /* fresh TREE node is expanded (collapsed flag 0) and depth 0 */
+  EXPECT(capy_widget_tree_is_collapsed(node) == 0);
+  EXPECT(capy_widget_tree_depth(node) == 0);
+  capy_widget_destroy(node);
+}
+
+static void test_tree_set_collapsed_toggle(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *node;
+  capy_widget_context_init(&ctx, &allocator);
+  node = capy_widget_create(&ctx, CAPY_WIDGET_TREE);
+  EXPECT(node != 0);
+  EXPECT(capy_widget_set_tree_collapsed(node, 1) == 0);
+  EXPECT(capy_widget_tree_is_collapsed(node) == 1);
+  EXPECT(capy_widget_set_tree_collapsed(node, 0) == 0);
+  EXPECT(capy_widget_tree_is_collapsed(node) == 0);
+  /* any nonzero normalises to 1 */
+  EXPECT(capy_widget_set_tree_collapsed(node, 42) == 0);
+  EXPECT(capy_widget_tree_is_collapsed(node) == 1);
+  capy_widget_destroy(node);
+}
+
+static void test_tree_depth_set_and_get(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *node;
+  capy_widget_context_init(&ctx, &allocator);
+  node = capy_widget_create(&ctx, CAPY_WIDGET_TREE);
+  EXPECT(node != 0);
+  EXPECT(capy_widget_tree_depth(node) == 0);
+  EXPECT(capy_widget_set_tree_depth(node, 3u) == 0);
+  EXPECT(capy_widget_tree_depth(node) == 3);
+  EXPECT(capy_widget_set_tree_depth(node, 0u) == 0);
+  EXPECT(capy_widget_tree_depth(node) == 0);
+  capy_widget_destroy(node);
+}
+
+static void test_tree_row_visible_no_ancestors(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *node;
+  capy_widget_context_init(&ctx, &allocator);
+  node = capy_widget_create(&ctx, CAPY_WIDGET_TREE);
+  EXPECT(node != 0);
+  /* no parent -> always visible, even when the node itself is collapsed */
+  EXPECT(capy_widget_tree_row_visible(node) == 1);
+  EXPECT(capy_widget_set_tree_collapsed(node, 1) == 0);
+  EXPECT(capy_widget_tree_row_visible(node) == 1);
+  capy_widget_destroy(node);
+}
+
+static void test_tree_row_visible_collapsed_ancestor(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *root;
+  struct capy_widget *child;
+  capy_widget_context_init(&ctx, &allocator);
+  root = capy_widget_create(&ctx, CAPY_WIDGET_TREE);
+  child = capy_widget_create(&ctx, CAPY_WIDGET_TREE);
+  EXPECT(root != 0 && child != 0);
+  EXPECT(capy_widget_add_child(root, child) == 0);
+  /* root expanded by default -> child visible */
+  EXPECT(capy_widget_tree_row_visible(child) == 1);
+  EXPECT(capy_widget_set_tree_collapsed(root, 1) == 0);
+  EXPECT(capy_widget_tree_row_visible(child) == 0);
+  EXPECT(capy_widget_set_tree_collapsed(root, 0) == 0);
+  EXPECT(capy_widget_tree_row_visible(child) == 1);
+  capy_widget_destroy(root);
+}
+
+static void test_tree_row_visible_nested(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *gp;
+  struct capy_widget *parent;
+  struct capy_widget *leaf;
+  capy_widget_context_init(&ctx, &allocator);
+  gp = capy_widget_create(&ctx, CAPY_WIDGET_TREE);
+  parent = capy_widget_create(&ctx, CAPY_WIDGET_TREE);
+  leaf = capy_widget_create(&ctx, CAPY_WIDGET_TREE);
+  EXPECT(gp != 0 && parent != 0 && leaf != 0);
+  EXPECT(capy_widget_add_child(gp, parent) == 0);
+  EXPECT(capy_widget_add_child(parent, leaf) == 0);
+  EXPECT(capy_widget_tree_row_visible(leaf) == 1);
+  /* collapsing the grandparent hides everything below it */
+  EXPECT(capy_widget_set_tree_collapsed(gp, 1) == 0);
+  EXPECT(capy_widget_tree_row_visible(leaf) == 0);
+  EXPECT(capy_widget_tree_row_visible(parent) == 0);
+  /* expand gp, collapse parent: leaf hidden, parent itself still visible */
+  EXPECT(capy_widget_set_tree_collapsed(gp, 0) == 0);
+  EXPECT(capy_widget_set_tree_collapsed(parent, 1) == 0);
+  EXPECT(capy_widget_tree_row_visible(leaf) == 0);
+  EXPECT(capy_widget_tree_row_visible(parent) == 1);
+  capy_widget_destroy(gp);
+}
+
+static void test_tree_wrong_widget_type_rejected(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *btn;
+  capy_widget_context_init(&ctx, &allocator);
+  btn = capy_widget_create(&ctx, CAPY_WIDGET_BUTTON);
+  EXPECT(btn != 0);
+  EXPECT(capy_widget_set_tree_collapsed(btn, 1) == -1);
+  EXPECT(capy_widget_tree_is_collapsed(btn) == -1);
+  EXPECT(capy_widget_set_tree_depth(btn, 1u) == -1);
+  EXPECT(capy_widget_tree_depth(btn) == -1);
+  EXPECT(capy_widget_tree_row_visible(btn) == -1);
+  capy_widget_destroy(btn);
+}
+
+static void test_tree_null_guards(void) {
+  EXPECT(capy_widget_set_tree_collapsed(0, 1) == -1);
+  EXPECT(capy_widget_tree_is_collapsed(0) == -1);
+  EXPECT(capy_widget_set_tree_depth(0, 1u) == -1);
+  EXPECT(capy_widget_tree_depth(0) == -1);
+  EXPECT(capy_widget_tree_row_visible(0) == -1);
+}
+
+/* ── v2.19: advanced widget state — chart dataset (since 2.19.0) ─────────── */
+
+static void test_chart_set_and_query(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *chart;
+  const int32_t values[3] = {10, 20, 30};
+  int32_t got = 0;
+  capy_widget_context_init(&ctx, &allocator);
+  chart = capy_widget_create(&ctx, CAPY_WIDGET_CHART);
+  EXPECT(chart != 0);
+  EXPECT(capy_widget_set_chart_data(chart, values, 3u) == 0);
+  EXPECT(capy_widget_chart_count(chart) == 3);
+  EXPECT(capy_widget_chart_value(chart, 0u, &got) == 0 && got == 10);
+  EXPECT(capy_widget_chart_value(chart, 2u, &got) == 0 && got == 30);
+  capy_widget_destroy(chart);
+}
+
+static void test_chart_value_out_of_range(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *chart;
+  const int32_t values[2] = {1, 2};
+  int32_t got = 0;
+  capy_widget_context_init(&ctx, &allocator);
+  chart = capy_widget_create(&ctx, CAPY_WIDGET_CHART);
+  EXPECT(chart != 0);
+  EXPECT(capy_widget_chart_value(chart, 0u, &got) == -1); /* no data yet */
+  EXPECT(capy_widget_set_chart_data(chart, values, 2u) == 0);
+  EXPECT(capy_widget_chart_value(chart, 2u, &got) == -1); /* index == count */
+  EXPECT(capy_widget_chart_value(chart, 99u, &got) == -1);
+  capy_widget_destroy(chart);
+}
+
+static void test_chart_set_zero_count_clears(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *chart;
+  const int32_t values[2] = {7, 8};
+  int32_t got = 0;
+  capy_widget_context_init(&ctx, &allocator);
+  chart = capy_widget_create(&ctx, CAPY_WIDGET_CHART);
+  EXPECT(chart != 0);
+  EXPECT(capy_widget_set_chart_data(chart, values, 2u) == 0);
+  EXPECT(capy_widget_chart_count(chart) == 2);
+  /* count 0 clears even when a (ignored) pointer is passed */
+  EXPECT(capy_widget_set_chart_data(chart, values, 0u) == 0);
+  EXPECT(capy_widget_chart_count(chart) == 0);
+  EXPECT(capy_widget_chart_value(chart, 0u, &got) == -1);
+  capy_widget_destroy(chart);
+}
+
+static void test_chart_set_null_values_rejected(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *chart;
+  const int32_t values[1] = {99};
+  capy_widget_context_init(&ctx, &allocator);
+  chart = capy_widget_create(&ctx, CAPY_WIDGET_CHART);
+  EXPECT(chart != 0);
+  EXPECT(capy_widget_set_chart_data(chart, values, 1u) == 0); /* known-good */
+  EXPECT(capy_widget_set_chart_data(chart, 0, 3u) == -1);     /* NULL + count>0 */
+  /* fail-closed: previous dataset intact */
+  EXPECT(capy_widget_chart_count(chart) == 1);
+  capy_widget_destroy(chart);
+}
+
+static void test_chart_clear(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *chart;
+  const int32_t values[2] = {3, 4};
+  int32_t got = 0;
+  int32_t lo = 123;
+  int32_t hi = 456;
+  capy_widget_context_init(&ctx, &allocator);
+  chart = capy_widget_create(&ctx, CAPY_WIDGET_CHART);
+  EXPECT(chart != 0);
+  EXPECT(capy_widget_set_chart_data(chart, values, 2u) == 0);
+  EXPECT(capy_widget_clear_chart_data(chart) == 0);
+  EXPECT(capy_widget_chart_count(chart) == 0);
+  EXPECT(capy_widget_chart_value(chart, 0u, &got) == -1);
+  /* range on empty dataset: returns 0 and zeroes the outputs */
+  EXPECT(capy_widget_chart_range(chart, &lo, &hi) == 0 && lo == 0 && hi == 0);
+  capy_widget_destroy(chart);
+}
+
+static void test_chart_range_minmax(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *chart;
+  const int32_t mixed[4] = {5, -3, 42, 17};
+  const int32_t single[1] = {-9};
+  int32_t lo = 0;
+  int32_t hi = 0;
+  capy_widget_context_init(&ctx, &allocator);
+  chart = capy_widget_create(&ctx, CAPY_WIDGET_CHART);
+  EXPECT(chart != 0);
+  /* signed min/max across positives and negatives */
+  EXPECT(capy_widget_set_chart_data(chart, mixed, 4u) == 0);
+  EXPECT(capy_widget_chart_range(chart, &lo, &hi) == 1 && lo == -3 && hi == 42);
+  /* single element: min == max */
+  EXPECT(capy_widget_set_chart_data(chart, single, 1u) == 0);
+  EXPECT(capy_widget_chart_range(chart, &lo, &hi) == 1 && lo == -9 && hi == -9);
+  capy_widget_destroy(chart);
+}
+
+static void test_chart_wrong_widget_type_rejected(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *btn;
+  const int32_t values[1] = {1};
+  int32_t got = 0;
+  int32_t lo = 0;
+  int32_t hi = 0;
+  capy_widget_context_init(&ctx, &allocator);
+  btn = capy_widget_create(&ctx, CAPY_WIDGET_BUTTON);
+  EXPECT(btn != 0);
+  EXPECT(capy_widget_set_chart_data(btn, values, 1u) == -1);
+  EXPECT(capy_widget_clear_chart_data(btn) == -1);
+  EXPECT(capy_widget_chart_count(btn) == -1);
+  EXPECT(capy_widget_chart_value(btn, 0u, &got) == -1);
+  EXPECT(capy_widget_chart_range(btn, &lo, &hi) == -1);
+  capy_widget_destroy(btn);
+}
+
+static void test_chart_null_guards(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *chart;
+  const int32_t values[1] = {1};
+  int32_t got = 0;
+  int32_t lo = 0;
+  capy_widget_context_init(&ctx, &allocator);
+  chart = capy_widget_create(&ctx, CAPY_WIDGET_CHART);
+  EXPECT(chart != 0);
+  EXPECT(capy_widget_set_chart_data(0, values, 1u) == -1);
+  EXPECT(capy_widget_clear_chart_data(0) == -1);
+  EXPECT(capy_widget_chart_count(0) == -1);
+  EXPECT(capy_widget_chart_value(0, 0u, &got) == -1);
+  EXPECT(capy_widget_chart_range(0, &lo, &lo) == -1);
+  EXPECT(capy_widget_set_chart_data(chart, values, 1u) == 0);
+  EXPECT(capy_widget_chart_value(chart, 0u, 0) == -1);    /* NULL out_value */
+  EXPECT(capy_widget_chart_range(chart, 0, &lo) == -1);   /* NULL out_min */
+  EXPECT(capy_widget_chart_range(chart, &lo, 0) == -1);   /* NULL out_max */
+  capy_widget_destroy(chart);
 }
 
 int main(void) {
@@ -7504,5 +8347,53 @@ int main(void) {
   test_login_layout_deterministic();
   test_login_layout_taxonomy();
   test_login_power_taxonomy();
+  test_date_set_valid_and_get();
+  test_date_unset_get_returns_zero();
+  test_date_invalid_rejected_fail_closed();
+  test_date_clear_resets();
+  test_date_wrong_widget_type_rejected();
+  test_date_is_valid_calendar_predicate();
+  test_date_null_guards();
+  test_date_determinism();
+  test_color_pack_channel_order();
+  test_color_pack_extremes();
+  test_color_set_and_get();
+  test_color_unset_get_returns_zero();
+  test_color_clear_resets();
+  test_color_wrong_widget_type_rejected();
+  test_color_null_guards();
+  test_color_determinism();
+  test_table_set_and_query();
+  test_table_index_out_of_range();
+  test_table_set_zero_count_clears();
+  test_table_set_null_widths_rejected();
+  test_table_clear();
+  test_table_wrong_widget_type_rejected();
+  test_table_null_guards();
+  test_table_default_no_columns();
+  test_autocomplete_set_and_query();
+  test_autocomplete_item_out_of_range();
+  test_autocomplete_set_zero_count_clears();
+  test_autocomplete_set_null_items_rejected();
+  test_autocomplete_clear();
+  test_autocomplete_selection_clamp();
+  test_autocomplete_wrong_widget_type_rejected();
+  test_autocomplete_null_guards();
+  test_tree_collapsed_default_expanded();
+  test_tree_set_collapsed_toggle();
+  test_tree_depth_set_and_get();
+  test_tree_row_visible_no_ancestors();
+  test_tree_row_visible_collapsed_ancestor();
+  test_tree_row_visible_nested();
+  test_tree_wrong_widget_type_rejected();
+  test_tree_null_guards();
+  test_chart_set_and_query();
+  test_chart_value_out_of_range();
+  test_chart_set_zero_count_clears();
+  test_chart_set_null_values_rejected();
+  test_chart_clear();
+  test_chart_range_minmax();
+  test_chart_wrong_widget_type_rejected();
+  test_chart_null_guards();
   return failures == 0 ? 0 : 1;
 }

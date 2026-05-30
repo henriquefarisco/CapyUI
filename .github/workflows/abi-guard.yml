@@ -1,0 +1,31 @@
+name: ABI Guard
+
+# Enforces the automated check required by
+# docs/roadmap/contracts/deprecation-policy.md: public widget-core symbols
+# must not disappear within a major version (removals are only allowed in a
+# major bump, after a >=2-minor deprecation window).
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: capyui-abi-guard-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  abi-guard:
+    name: Public ABI removal guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Need full history + tags so the script can resolve the latest v*
+          # baseline tag to diff against.
+          fetch-depth: 0
+      - name: Run ABI guard
+        run: bash tools/abi_guard.sh

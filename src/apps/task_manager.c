@@ -11,6 +11,7 @@
 #include "util/kstring.h"
 #include "memory/kmem.h"
 #include <stddef.h>
+#include <stdint.h>
 
 #define TASK_MANAGER_TAB_COUNT 3
 #define TASK_MANAGER_TAB_HEIGHT 22
@@ -19,9 +20,8 @@
  * automatic Task Manager refreshes. The desktop runs at the
  * compositor's render rate (typically ~60 Hz on real hw, much
  * lower under TCG smoke). 30 frames = ~0.5 s on hw and still
- * sub-second under TCG; small enough that newly-spawned apps
- * appear "instantly" to a human, large enough that the iterators
- * are not pounded every frame. */
+ * sub-second under TCG; snapshot changes refresh immediately and
+ * unchanged views still repaint on this cadence. */
 #define TASK_MANAGER_AUTO_REFRESH_FRAMES 30
 
 static struct task_manager_app g_tm;
@@ -47,7 +47,7 @@ static int task_manager_count_tasks(void) {
   struct task_stats s;
   int n = 0;
   for (int ok = task_iter_first(&it, &s); ok; ok = task_iter_next(&it, &s)) {
-    n++;
+    if (s.state != TASK_STATE_ZOMBIE && s.state != TASK_STATE_DEAD) n++;
   }
   return n;
 }
@@ -58,9 +58,64 @@ static int task_manager_count_processes(void) {
   int n = 0;
   for (int ok = process_iter_first(&it, &s); ok;
        ok = process_iter_next(&it, &s)) {
-    n++;
+    if (s.state != PROC_STATE_ZOMBIE) n++;
   }
   return n;
+}
+
+static uint64_t task_manager_hash_mix(uint64_t h, uint64_t v) {
+  h ^= v + 0x9E3779B97F4A7C15ull + (h << 6) + (h >> 2);
+  return h;
+}
+
+static uint64_t task_manager_hash_text(uint64_t h, const char *text) {
+  if (!text) return task_manager_hash_mix(h, 0u);
+  while (*text) {
+    h = task_manager_hash_mix(h, (uint8_t)*text);
+    text++;
+  }
+  return task_manager_hash_mix(h, 0xFFu);
+}
+
+static uint64_t task_manager_snapshot_for(enum task_manager_view view) {
+  uint64_t h = task_manager_hash_mix(0xCBF29CE484222325ull, (uint64_t)view);
+  if (view == TASK_MANAGER_VIEW_TASKS) {
+    struct task_iter it;
+    struct task_stats t;
+    for (int ok = task_iter_first(&it, &t); ok; ok = task_iter_next(&it, &t)) {
+      if (t.state == TASK_STATE_ZOMBIE || t.state == TASK_STATE_DEAD) continue;
+      h = task_manager_hash_mix(h, t.pid);
+      h = task_manager_hash_mix(h, t.ppid);
+      h = task_manager_hash_mix(h, (uint64_t)t.state);
+      h = task_manager_hash_mix(h, (uint64_t)t.priority);
+      h = task_manager_hash_text(h, t.name);
+    }
+    return h;
+  }
+  if (view == TASK_MANAGER_VIEW_PROCESSES) {
+    struct process_iter it;
+    struct process_stats p;
+    for (int ok = process_iter_first(&it, &p); ok;
+         ok = process_iter_next(&it, &p)) {
+      if (p.state == PROC_STATE_ZOMBIE) continue;
+      h = task_manager_hash_mix(h, p.pid);
+      h = task_manager_hash_mix(h, p.ppid);
+      h = task_manager_hash_mix(h, (uint64_t)p.state);
+      h = task_manager_hash_mix(h, p.uid);
+      h = task_manager_hash_mix(h, p.main_thread_pid);
+      h = task_manager_hash_text(h, p.name);
+    }
+    return h;
+  }
+  for (size_t i = 0; i < service_manager_count(); i++) {
+    struct system_service_status service;
+    if (service_manager_get_at(i, &service) != 0) continue;
+    h = task_manager_hash_mix(h, service.id);
+    h = task_manager_hash_mix(h, service.state);
+    h = task_manager_hash_mix(h, service.startup);
+    h = task_manager_hash_text(h, service.name);
+  }
+  return h;
 }
 
 static int task_manager_visible_count_for(enum task_manager_view view) {
@@ -99,6 +154,7 @@ static uint32_t task_manager_pid_for_selected(const struct task_manager_app *app
     int row = 0;
     for (int ok = task_iter_first(&it, &t); ok;
          ok = task_iter_next(&it, &t)) {
+      if (t.state == TASK_STATE_ZOMBIE || t.state == TASK_STATE_DEAD) continue;
       if (row == target) return t.pid;
       row++;
     }
@@ -110,6 +166,7 @@ static uint32_t task_manager_pid_for_selected(const struct task_manager_app *app
     int row = 0;
     for (int ok = process_iter_first(&it, &p); ok;
          ok = process_iter_next(&it, &p)) {
+      if (p.state == PROC_STATE_ZOMBIE) continue;
       if (row == target) return p.pid;
       row++;
     }
@@ -130,6 +187,7 @@ void task_manager_refresh(struct task_manager_app *app) {
     if (app->scroll_offset < 0) app->scroll_offset = 0;
     if (app->scroll_offset >= visible) app->scroll_offset = visible - 1;
   }
+  app->snapshot_hash = task_manager_snapshot_for(app->view);
   if (app->window) compositor_invalidate(app->window->id);
 }
 
@@ -155,7 +213,10 @@ void task_manager_tick(void) {
    * only cost when Task Manager is closed. */
   if (!g_tm_open || !g_tm.window) return;
   g_tm.refresh_tick++;
-  if (g_tm.refresh_tick % TASK_MANAGER_AUTO_REFRESH_FRAMES != 0) return;
+  if (task_manager_snapshot_for(g_tm.view) == g_tm.snapshot_hash &&
+      g_tm.refresh_tick % TASK_MANAGER_AUTO_REFRESH_FRAMES != 0) {
+    return;
+  }
   /* `task_manager_refresh` re-clamps selection/scroll to the new
    * iterator counts AND invalidates the window so the next
    * compositor render hits `task_manager_paint`, which reads
@@ -164,26 +225,46 @@ void task_manager_tick(void) {
 }
 
 void task_manager_kill_selected(struct task_manager_app *app) {
+  uint32_t pid;
   if (!app) return;
-  /* Services don't get killed -- their lifecycle is managed by
-   * the service_manager. Bounce the request to Restart so the
-   * footer button labelled "Restart" still does the right thing
-   * for the services tab even if a future iteration relabels it
-   * to "Kill" for visual consistency. */
   if (app->view == TASK_MANAGER_VIEW_SERVICES) {
-    task_manager_restart_selected(app);
+    struct system_service_status service;
+    if (app->selected < 0) return;
+    if (task_manager_service_for_row(app->selected, &service) != 0) return;
+    if (service.state == SYSTEM_SERVICE_STATE_STOPPED ||
+        service.state == SYSTEM_SERVICE_STATE_UNKNOWN) {
+      (void)service_manager_start(service.id);
+    } else {
+      (void)service_manager_stop(service.id);
+    }
+    task_manager_refresh(app);
     return;
   }
-  uint32_t pid = task_manager_pid_for_selected(app);
+  pid = task_manager_pid_for_selected(app);
   if (pid == 0) return;
-  /* SIGKILL = 9 in POSIX numbering. `process_kill` records
-   * exit_code = 128 + 9, flips state to ZOMBIE, kills the main
-   * thread, and (for orphans / boot processes with no parent)
-   * destroys the slot immediately. The W2 smoke proves a click
-   * here removes the row on the next auto-refresh tick. */
-  process_kill(pid, 9);
-  /* Force an immediate refresh so the row disappears even before
-   * the next 30-frame auto tick fires. */
+  if (app->view == TASK_MANAGER_VIEW_TASKS) {
+    struct task *current = task_current();
+    uint32_t owner_pid = 0u;
+    struct process_iter it;
+    struct process_stats p;
+    if (current && current->pid == pid) return;
+    for (int ok = process_iter_first(&it, &p); ok;
+         ok = process_iter_next(&it, &p)) {
+      if (p.state != PROC_STATE_ZOMBIE && p.main_thread_pid == pid) {
+        owner_pid = p.pid;
+        break;
+      }
+    }
+    if (owner_pid != 0u) {
+      struct process *current_proc = process_current();
+      if (current_proc && current_proc->pid == owner_pid) return;
+      (void)process_kill(owner_pid, 9);
+    }
+  } else {
+    struct process *current_proc = process_current();
+    if (current_proc && current_proc->pid == pid) return;
+    (void)process_kill(pid, 9);
+  }
   task_manager_refresh(app);
 }
 
@@ -307,22 +388,14 @@ static void task_manager_window_mouse(struct gui_window *win, int32_t x, int32_t
     return;
   }
 
-  /* Footer buttons: Refresh and Restart. */
+  /* Footer buttons: Refresh and action. */
   if (y >= footer_y && x >= 80 && x < 156) {
     task_manager_refresh(app);
     return;
   }
   if (y >= footer_y && x >= (int32_t)(win->frame.width - 72) &&
       x < (int32_t)(win->frame.width - 8)) {
-    /* Right-side action button. Restart for services, Kill for
-     * tasks/processes. `task_manager_kill_selected` itself bounces
-     * to restart on the services view, so the dispatch here just
-     * picks the canonical entry point per view for clarity. */
-    if (app->view == TASK_MANAGER_VIEW_SERVICES) {
-      task_manager_restart_selected(app);
-    } else {
-      task_manager_kill_selected(app);
-    }
+    task_manager_kill_selected(app);
     compositor_invalidate(win->id);
     return;
   }
@@ -496,6 +569,7 @@ static void task_manager_paint_tasks_rows(struct task_manager_app *app,
   struct task_stats t;
   int row = 0;
   for (int ok = task_iter_first(&it, &t); ok; ok = task_iter_next(&it, &t)) {
+    if (t.state == TASK_STATE_ZOMBIE || t.state == TASK_STATE_DEAD) continue;
     if (row < app->scroll_offset) { row++; continue; }
     int32_t ypos = task_manager_row_y(row - app->scroll_offset);
     if (ypos + 18 > footer_y) break;
@@ -530,6 +604,7 @@ static void task_manager_paint_processes_rows(struct task_manager_app *app,
   int row = 0;
   for (int ok = process_iter_first(&it, &p); ok;
        ok = process_iter_next(&it, &p)) {
+    if (p.state == PROC_STATE_ZOMBIE) continue;
     if (row < app->scroll_offset) { row++; continue; }
     int32_t ypos = task_manager_row_y(row - app->scroll_offset);
     if (ypos + 18 > footer_y) break;
@@ -594,21 +669,25 @@ static void task_manager_paint_footer(struct task_manager_app *app,
                                         "Actualizar"),
                    theme->text);
 
-  /* Action button: label depends on the active view.
-   *   - Services -> "Restart" (delegates to service_manager).
-   *   - Tasks / Processes -> "Kill" (delegates to process_kill).
-   * The button is greyed out when no row is selected so the user
-   * gets visual feedback that the action will no-op.
-   * Etapa F4 i18n (2026-05-03): labels Restart/Kill localizados. */
   uint32_t btn_w = 64;
   int32_t btn_x = (int32_t)(s->width - btn_w - 8);
   int action_enabled = (app->selected >= 0);
   uint32_t btn_bg = action_enabled ? 0x00CC3333u : theme->accent_alt;
-  const char *btn_label = (app->view == TASK_MANAGER_VIEW_SERVICES)
-                              ? localization_select(lang, "Reiniciar",
-                                                     "Restart", "Reiniciar")
-                              : localization_select(lang, "Matar", "Kill",
-                                                     "Matar");
+  const char *btn_label;
+  if (app->view == TASK_MANAGER_VIEW_SERVICES) {
+    struct system_service_status service;
+    int start_action = app->selected >= 0 &&
+        task_manager_service_for_row(app->selected, &service) == 0 &&
+        (service.state == SYSTEM_SERVICE_STATE_STOPPED ||
+         service.state == SYSTEM_SERVICE_STATE_UNKNOWN);
+    btn_label = start_action ? localization_select(lang, "Iniciar", "Start",
+                                                   "Iniciar")
+                             : localization_select(lang, "Parar", "Stop",
+                                                   "Parar");
+    if (action_enabled && start_action) btn_bg = theme->accent;
+  } else {
+    btn_label = localization_select(lang, "Matar", "Kill", "Matar");
+  }
   task_manager_fill_rect(s, btn_x, footer_y, btn_w, 20, btn_bg);
   font_draw_string(s, f, btn_x + 4, footer_y + 2, btn_label,
                    action_enabled ? 0x00FFFFFFu : theme->text_muted);

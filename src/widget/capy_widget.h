@@ -27,7 +27,7 @@
  * No symbol is currently annotated; the macro is published so downstream
  * call sites can compile against it without conditional guards. */
 #define CAPYUI_API_VERSION_MAJOR 2
-#define CAPYUI_API_VERSION_MINOR 13
+#define CAPYUI_API_VERSION_MINOR 19
 #define CAPYUI_API_VERSION_PATCH 0
 
 /* Composite ABI tag (since 2.0) used by plugins to declare the minimum host
@@ -457,6 +457,19 @@ struct capy_widget_allocator {
   void *user_data;
 };
 
+/* Date picker value (since 2.14, aditivo). Embedded by value at the tail of
+ * `capy_widget` and meaningful only when `type == CAPY_WIDGET_DATE_PICKER`.
+ * A zeroed value (`year == 0 || month == 0 || day == 0`) is the "unset"
+ * sentinel that every freshly-created widget starts in. Stored as a plain
+ * proleptic-Gregorian calendar date; the widget core validates it (month
+ * 1..12, day within the month including Feb 29 on leap years) and never
+ * interprets time zones, locales or any clock. */
+struct capy_date {
+  uint16_t year;  /* 1..65535; 0 = unset */
+  uint8_t month;  /* 1..12; 0 = unset */
+  uint8_t day;    /* 1..31, calendar-validated; 0 = unset */
+};
+
 struct capy_widget {
   uint32_t id;
   enum capy_widget_type type;
@@ -541,6 +554,70 @@ struct capy_widget {
    * lives in the host LIST/TREE/TABLE renderers and lands in a follow-up
    * fatia. */
   const struct capy_virtual_data_source *virtual_source;
+  /* Date picker value (since 2.14, aditivo, tail). Valid only when
+   * `type == CAPY_WIDGET_DATE_PICKER`. Zero-initialised by
+   * `capy_widget_create` to the unset sentinel; mutated only through
+   * `capy_widget_set_date` / `capy_widget_clear_date` and read through
+   * `capy_widget_get_date`. This is the first "advanced widget" family
+   * (enum-only since 2.1) lifted from caller-owned `user_data` into a
+   * dedicated tail slot. Callers that kept the value in `user_data`
+   * pre-2.14 are unaffected: the field simply stays unset. */
+  struct capy_date date_value;
+  /* Color picker value (since 2.15, aditivo, tail). Valid only when
+   * `type == CAPY_WIDGET_COLOR_PICKER`. `picker_color` is 0xAARRGGBB (same
+   * channel order as `capy_widget_style.*_color` and the theme tokens).
+   * Because every 32-bit value is a valid colour there is no natural "unset"
+   * sentinel, so `picker_color_set` (0 = unset, the create-time default;
+   * 1 = a colour was stored) tracks presence. Mutated only through
+   * `capy_widget_set_color` / `capy_widget_clear_color`; read through
+   * `capy_widget_get_color`. Second advanced-widget family (enum-only since
+   * 2.1) lifted from caller-owned `user_data` into a dedicated tail slot. */
+  uint32_t picker_color;
+  uint8_t picker_color_set;
+  /* Table columns (since 2.16, aditivo, tail). Valid only when
+   * `type == CAPY_WIDGET_TABLE`. `table_column_widths` is a caller-owned
+   * array of `table_column_count` column widths in pixels; CapyUI never
+   * copies, allocates or frees it — the pointer must outlive the widget's
+   * use of it. NULL/0 (the create-time default) means "no column model
+   * set". Third advanced-widget family lifted from caller-owned `user_data`
+   * into a tail slot; mutated through `capy_widget_set_table_columns` /
+   * `capy_widget_clear_table_columns`, read through
+   * `capy_widget_table_column_count` / `capy_widget_table_column_width`. */
+  const uint16_t *table_column_widths;
+  uint16_t table_column_count;
+  /* Autocomplete suggestions (since 2.17, aditivo, tail). Valid only when
+   * `type == CAPY_WIDGET_AUTOCOMPLETE`. `autocomplete_items` is a caller-owned
+   * array of `autocomplete_count` NUL-terminated C-strings (same caller-owned,
+   * never-copied idiom as `drop_accepted_types` and the IME candidate list);
+   * the pointer must outlive the widget's use. NULL/0 (create-time default)
+   * means "no suggestion list". `autocomplete_selected` is the highlighted
+   * entry index, or -1 for "none"; it is clamped against the live count on read
+   * so a stale selection never points past the list. Fourth advanced-widget
+   * family lifted from caller-owned `user_data` into tail slots; the first to
+   * carry a mutable navigation cursor alongside a caller-owned model. */
+  const char *const *autocomplete_items;
+  uint16_t autocomplete_count;
+  int32_t autocomplete_selected;
+  /* Tree hierarchy state (since 2.18, aditivo, tail). Valid only when
+   * `type == CAPY_WIDGET_TREE`. `tree_collapsed` is the per-node fold state
+   * (1 = children hidden); the create-time default of 0 means "expanded", so
+   * a fresh node shows its children. `tree_depth` is a caller-set indentation
+   * level (0 = root row) for flattened/virtualized tree models where the
+   * visual nesting need not match the widget tree. Fifth advanced-widget
+   * family; the first whose read side walks the widget hierarchy
+   * (`capy_widget_tree_row_visible` checks TREE ancestors). Mutated through
+   * `capy_widget_set_tree_collapsed` / `capy_widget_set_tree_depth`. */
+  uint8_t tree_collapsed;
+  uint16_t tree_depth;
+  /* Chart dataset (since 2.19, aditivo, tail). Valid only when
+   * `type == CAPY_WIDGET_CHART`. `chart_values` is a caller-owned array of
+   * `chart_count` signed data points (same caller-owned, never-copied idiom as
+   * the table widths / autocomplete list); the pointer must outlive the
+   * widget's use. NULL/0 (create-time default) means "no data". Sixth
+   * advanced-widget family; the first carrying a numeric reduction
+   * (`capy_widget_chart_range` scans the dataset for its signed min/max). */
+  const int32_t *chart_values;
+  uint16_t chart_count;
 };
 
 struct capy_widget_context {
@@ -2036,6 +2113,175 @@ int capy_wallpaper_serialize(const struct capy_wallpaper_config *config,
 #define CAPY_LOGIN_POWER_COUNT     6u
 
 uint8_t capy_login_choose_layout(uint32_t user_count);
+
+/* Advanced widget state — date picker (since 2.14).
+ *
+ * Lifts the DATE_PICKER value (enum-only since 2.1) from caller-owned
+ * `user_data` into a first-class tail field (`capy_widget.date_value`). The
+ * widget core owns calendar validation and nothing else: no locale, no
+ * formatting, no clock, no allocation. Every function is deterministic and
+ * total. DL schema is unchanged (DATE_PICKER still emits via the generic
+ * pipeline; this slice only adds state + validation).
+ *
+ *  - `capy_date_is_valid(year, month, day)` — pure proleptic-Gregorian
+ *    calendar predicate (month 1..12, day within month incl. Feb 29 on leap
+ *    years, year >= 1). Returns 1 for a real date, else 0. Hosts can call it
+ *    to pre-validate before the setter.
+ *  - `capy_widget_set_date(w, year, month, day)` — validates then stores.
+ *    Returns 0 on success; -1 on NULL `w`, `w->type != CAPY_WIDGET_DATE_PICKER`,
+ *    or an out-of-range date. On failure the stored value is left unchanged
+ *    (fail-closed).
+ *  - `capy_widget_clear_date(w)` — resets the value to the unset sentinel
+ *    (all zero). Returns 0; -1 on NULL / wrong type.
+ *  - `capy_widget_get_date(w, out)` — copies the stored value into `*out`.
+ *    Returns 1 when a valid date is set, 0 when unset, -1 on NULL `w` /
+ *    wrong type / NULL `out`. */
+int capy_date_is_valid(uint16_t year, uint8_t month, uint8_t day);
+int capy_widget_set_date(struct capy_widget *w, uint16_t year, uint8_t month,
+                         uint8_t day);
+int capy_widget_clear_date(struct capy_widget *w);
+int capy_widget_get_date(const struct capy_widget *w, struct capy_date *out);
+
+/* Advanced widget state — color picker (since 2.15).
+ *
+ * Second advanced-widget family (enum-only since 2.1) lifted into a tail
+ * field. Mirrors the date-picker shape: total / deterministic / zero-alloc /
+ * zero-float. Colours use the 0xAARRGGBB layout shared with
+ * `capy_widget_style` and the theme tokens.
+ *
+ *  - `capy_color_pack(r, g, b, a)` — packs 8-bit channels into 0xAARRGGBB.
+ *    Pure and total; each channel is cast to `uint32_t` before shifting so
+ *    there is no signed overflow. The inverse is the established
+ *    `(argb >> 16) & 0xFFu` (red) / `>> 8` (green) / `& 0xFFu` (blue).
+ *  - `capy_widget_set_color(w, argb)` — stores `argb` and marks the value
+ *    set. Returns 0; -1 on NULL `w` or `w->type != CAPY_WIDGET_COLOR_PICKER`.
+ *    Every 32-bit value is a valid colour, so there is no value validation.
+ *  - `capy_widget_clear_color(w)` — resets to the unset state (colour 0,
+ *    flag 0). Returns 0; -1 on NULL / wrong type.
+ *  - `capy_widget_get_color(w, out)` — copies the stored colour into `*out`
+ *    (0 when unset). Returns 1 when a colour is set, 0 when unset, -1 on
+ *    NULL `w` / wrong type / NULL `out`. */
+uint32_t capy_color_pack(uint8_t r, uint8_t g, uint8_t b, uint8_t a);
+int capy_widget_set_color(struct capy_widget *w, uint32_t argb);
+int capy_widget_clear_color(struct capy_widget *w);
+int capy_widget_get_color(const struct capy_widget *w, uint32_t *out);
+
+/* Advanced widget state — table columns (since 2.16).
+ *
+ * Third advanced-widget family (enum-only since 2.1) lifted into tail fields.
+ * Unlike the scalar date/color pickers, the table stores a caller-owned
+ * column-width array (zero-alloc: CapyUI never copies/frees it) plus a count,
+ * and the accessors are bounds-checked / fail-closed. Widths are in pixels.
+ *
+ *  - `capy_widget_set_table_columns(w, widths, count)` — stores the model.
+ *    `count == 0` clears (widths ignored). `count > 0` requires non-NULL
+ *    `widths` (which must outlive the widget's use). Returns 0; -1 on NULL `w`,
+ *    `w->type != CAPY_WIDGET_TABLE`, or `count > 0 && widths == NULL`. On
+ *    failure the stored model is left unchanged (fail-closed).
+ *  - `capy_widget_clear_table_columns(w)` — resets to no columns (NULL/0).
+ *    Returns 0; -1 on NULL / wrong type.
+ *  - `capy_widget_table_column_count(w)` — number of columns (0 when none),
+ *    or -1 on NULL / wrong type.
+ *  - `capy_widget_table_column_width(w, index, out_width)` — writes
+ *    `widths[index]` into `*out_width`. Returns 0; -1 on NULL `w` / wrong type
+ *    / NULL `out_width` / no model / `index >= count` (bounds-checked). */
+int capy_widget_set_table_columns(struct capy_widget *w,
+                                  const uint16_t *widths, uint16_t count);
+int capy_widget_clear_table_columns(struct capy_widget *w);
+int capy_widget_table_column_count(const struct capy_widget *w);
+int capy_widget_table_column_width(const struct capy_widget *w, uint16_t index,
+                                   uint16_t *out_width);
+
+/* Advanced widget state — autocomplete suggestions (since 2.17).
+ *
+ * Fourth advanced-widget family lifted into tail fields. Like the table it
+ * stores a caller-owned model (zero-alloc: the `const char *const *` array is
+ * never copied/freed), but it adds a mutable selection cursor with clamp /
+ * fail-closed semantics. The suggestion strings are caller-owned and must
+ * outlive the widget's use.
+ *
+ *  - `capy_widget_set_autocomplete(w, items, count)` — stores the list and
+ *    resets the selection to "none" (-1). `count == 0` clears (items ignored).
+ *    `count > 0` requires non-NULL `items`. Returns 0; -1 on NULL `w`,
+ *    `type != AUTOCOMPLETE`, or `count > 0 && items == NULL` (stored model left
+ *    unchanged on failure).
+ *  - `capy_widget_clear_autocomplete(w)` — resets to NULL/0 and selection -1.
+ *    Returns 0; -1 on NULL / wrong type.
+ *  - `capy_widget_autocomplete_count(w)` — number of suggestions (0 when none),
+ *    or -1 on NULL / wrong type.
+ *  - `capy_widget_autocomplete_item(w, index, out_item)` — writes
+ *    `items[index]` into `*out_item`. Returns 0; -1 on NULL `w` / wrong type /
+ *    NULL `out_item` / no list / `index >= count` (bounds-checked).
+ *  - `capy_widget_set_autocomplete_selected(w, index)` — `index == -1` clears
+ *    the selection; `0 <= index < count` selects. Returns 0; -1 on NULL `w` /
+ *    wrong type / `index < -1` / `index >= count` (fail-closed).
+ *  - `capy_widget_get_autocomplete_selected(w, out_index)` — writes the live
+ *    selection (clamped against the current count; -1 when none) into
+ *    `*out_index`. Returns 1 when an entry is selected, 0 when none, -1 on
+ *    NULL `w` / wrong type / NULL `out_index`. */
+int capy_widget_set_autocomplete(struct capy_widget *w,
+                                 const char *const *items, uint16_t count);
+int capy_widget_clear_autocomplete(struct capy_widget *w);
+int capy_widget_autocomplete_count(const struct capy_widget *w);
+int capy_widget_autocomplete_item(const struct capy_widget *w, uint16_t index,
+                                  const char **out_item);
+int capy_widget_set_autocomplete_selected(struct capy_widget *w, int32_t index);
+int capy_widget_get_autocomplete_selected(const struct capy_widget *w,
+                                          int32_t *out_index);
+
+/* Advanced widget state — tree hierarchy (since 2.18).
+ *
+ * Fifth advanced-widget family. Per-node scalar state (fold flag + indent
+ * depth) plus the track's first hierarchy-walking read: row visibility is
+ * derived from the node's TREE ancestors. Total / deterministic / zero-alloc /
+ * zero-float / fail-closed by widget type.
+ *
+ *  - `capy_widget_set_tree_collapsed(w, collapsed)` — sets the fold flag (any
+ *    nonzero `collapsed` stores 1). Returns 0; -1 on NULL `w` / `type != TREE`.
+ *  - `capy_widget_tree_is_collapsed(w)` — 1 collapsed, 0 expanded, or -1 on
+ *    NULL / wrong type. A fresh node is expanded (0).
+ *  - `capy_widget_set_tree_depth(w, depth)` — sets the indent level. Returns 0;
+ *    -1 on NULL / wrong type.
+ *  - `capy_widget_tree_depth(w)` — indent level (0 at root), or -1 on NULL /
+ *    wrong type.
+ *  - `capy_widget_tree_row_visible(w)` — walks the parent chain: returns 0 when
+ *    any ancestor that is a TREE node is collapsed (the node's own collapse
+ *    does not hide itself), 1 when no collapsed TREE ancestor is found, -1 on
+ *    NULL `w` / `type != TREE`. Deterministic; non-TREE ancestors are skipped. */
+int capy_widget_set_tree_collapsed(struct capy_widget *w, int collapsed);
+int capy_widget_tree_is_collapsed(const struct capy_widget *w);
+int capy_widget_set_tree_depth(struct capy_widget *w, uint16_t depth);
+int capy_widget_tree_depth(const struct capy_widget *w);
+int capy_widget_tree_row_visible(const struct capy_widget *w);
+
+/* Advanced widget state — chart dataset (since 2.19).
+ *
+ * Sixth advanced-widget family. Caller-owned signed data array (zero-alloc:
+ * the `const int32_t *` array is never copied/freed) plus a bounds-checked
+ * accessor and a deterministic numeric reduction (signed min/max). Total /
+ * deterministic / zero-alloc / zero-float / fail-closed by widget type.
+ *
+ *  - `capy_widget_set_chart_data(w, values, count)` — stores the dataset.
+ *    `count == 0` clears (values ignored). `count > 0` requires non-NULL
+ *    `values` (which must outlive the widget's use). Returns 0; -1 on NULL `w`,
+ *    `type != CHART`, or `count > 0 && values == NULL` (state unchanged on fail).
+ *  - `capy_widget_clear_chart_data(w)` — resets to NULL/0. 0; -1 NULL / type.
+ *  - `capy_widget_chart_count(w)` — number of points (0 when none), or -1.
+ *  - `capy_widget_chart_value(w, index, out_value)` — writes `values[index]`
+ *    into `*out_value`. 0; -1 on NULL / wrong type / NULL `out_value` / no data
+ *    / `index >= count` (bounds-checked).
+ *  - `capy_widget_chart_range(w, out_min, out_max)` — single-pass signed
+ *    min/max over the dataset. Returns 1 with the bounds written when data is
+ *    present, 0 (and `*out_min = *out_max = 0`) when empty, -1 on NULL `w` /
+ *    wrong type / NULL `out_min` / NULL `out_max`. */
+int capy_widget_set_chart_data(struct capy_widget *w, const int32_t *values,
+                               uint16_t count);
+int capy_widget_clear_chart_data(struct capy_widget *w);
+int capy_widget_chart_count(const struct capy_widget *w);
+int capy_widget_chart_value(const struct capy_widget *w, uint16_t index,
+                            int32_t *out_value);
+int capy_widget_chart_range(const struct capy_widget *w, int32_t *out_min,
+                            int32_t *out_max);
 
 /* Pool allocator + measure cache (since 0.15).
  *

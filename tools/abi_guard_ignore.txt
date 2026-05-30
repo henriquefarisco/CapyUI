@@ -1,0 +1,8 @@
+# abi_guard.sh allowlist — symbols intentionally absent from the public
+# headers that the heuristic would otherwise flag as "removed".
+#
+# One symbol per line. Lines starting with '#' and blank lines are ignored.
+# Keep this list EMPTY unless a real false positive appears; every entry is a
+# hole in the ABI removal guard. Document the reason inline.
+#
+# (currently empty)

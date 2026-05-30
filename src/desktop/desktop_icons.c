@@ -262,6 +262,42 @@ static uint32_t di_usable_width(void) {
   return g_di.screen_w - DESKTOP_ICON_PAD_RIGHT;
 }
 
+static int di_icon_damage_rect(int idx, struct gui_rect *rect) {
+  int32_t x = 0;
+  int32_t y = 0;
+  uint32_t usable_h;
+  uint32_t usable_w;
+  if (!rect || idx < 0 || idx >= (int)g_di.count) return 0;
+  usable_h = di_usable_height();
+  usable_w = di_usable_width();
+  if (usable_h == 0u) return 0;
+  di_icon_position((uint32_t)idx, &x, &y);
+  if (x + (int32_t)DESKTOP_ICON_CELL_W > (int32_t)usable_w) return 0;
+  if (y + (int32_t)DESKTOP_ICON_CELL_H > (int32_t)usable_h) return 0;
+  rect->x = x - 4;
+  rect->y = y - 4;
+  rect->width = DESKTOP_ICON_CELL_W + 8u;
+  rect->height = DESKTOP_ICON_CELL_H + 8u;
+  return 1;
+}
+
+static void di_invalidate_icons(int a, int b) {
+#if defined(CAPYOS_HAVE_CAPYUI_WIDGET)
+  struct gui_rect rect;
+  int invalidated = 0;
+  if (di_icon_damage_rect(a, &rect)) {
+    compositor_invalidate_desktop_rect(&rect);
+    invalidated = 1;
+  }
+  if (b != a && di_icon_damage_rect(b, &rect)) {
+    compositor_invalidate_desktop_rect(&rect);
+    invalidated = 1;
+  }
+  if (invalidated) return;
+#endif
+  if (a >= 0 || b >= 0) compositor_invalidate_all();
+}
+
 static void di_draw_wallpaper(struct gui_surface *s,
                               const struct gui_theme_palette *theme) {
   uint32_t usable_h = 0;
@@ -553,14 +589,16 @@ void di_request_delete_selected(void) {
 
 void desktop_icons_clear_selection(void) {
   if (g_di.selected != -1) {
+    int old = g_di.selected;
     g_di.selected = -1;
-    compositor_invalidate_all();
+    di_invalidate_icons(old, -1);
   }
 }
 
 void desktop_icons_handle_click(int32_t sx, int32_t sy) {
   int hit = desktop_icons_hit_test(sx, sy);
   int prev = g_di.selected;
+  int prev_over = g_di.drag_over;
   if (hit < 0) {
     g_di.selected = -1;
     g_di.drag_active = 0;
@@ -570,7 +608,7 @@ void desktop_icons_handle_click(int32_t sx, int32_t sy) {
     g_di.drag_moved = 0;
     g_di.drag_start_x = 0;
     g_di.drag_start_y = 0;
-    if (prev != -1) compositor_invalidate_all();
+    if (prev != -1 || prev_over != -1) di_invalidate_icons(prev, prev_over);
     return;
   }
   g_di.drag_active = 1;
@@ -581,7 +619,10 @@ void desktop_icons_handle_click(int32_t sx, int32_t sy) {
   g_di.drag_start_x = sx;
   g_di.drag_start_y = sy;
   g_di.selected = hit;
-  compositor_invalidate_all();
+  di_invalidate_icons(prev, hit);
+  if (prev_over != -1 && prev_over != prev && prev_over != hit) {
+    di_invalidate_icons(prev_over, -1);
+  }
 }
 
 void desktop_icons_handle_drag_move(int32_t sx, int32_t sy, uint8_t buttons) {
@@ -612,8 +653,9 @@ void desktop_icons_handle_drag_move(int32_t sx, int32_t sy, uint8_t buttons) {
     file_manager_clear_external_drop();
   }
   if (next_over != g_di.drag_over) {
+    int old_over = g_di.drag_over;
     g_di.drag_over = next_over;
-    compositor_invalidate_all();
+    di_invalidate_icons(old_over, next_over);
   }
 }
 
@@ -649,7 +691,7 @@ int desktop_icons_handle_mouse_up(int32_t sx, int32_t sy) {
     di_open_entry(src);
     g_di.selected = -1;
   }
-  compositor_invalidate_all();
+  di_invalidate_icons(src, dst);
   return 1;
 }
 
@@ -665,8 +707,9 @@ int desktop_icons_preview_external_drop(int32_t sx, int32_t sy) {
     next_over = hit;
   }
   if (next_over != g_di.drag_over) {
+    int old_over = g_di.drag_over;
     g_di.drag_over = next_over;
-    compositor_invalidate_all();
+    di_invalidate_icons(old_over, next_over);
   }
   return 1;
 }
@@ -695,8 +738,9 @@ int desktop_icons_drop_path_at(int32_t sx, int32_t sy, const char *src_path) {
 
 void desktop_icons_clear_external_drop(void) {
   if (g_di.drag_over != -1 && !g_di.drag_active) {
+    int old_over = g_di.drag_over;
     g_di.drag_over = -1;
-    compositor_invalidate_all();
+    di_invalidate_icons(old_over, -1);
   }
 }
 

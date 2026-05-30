@@ -1,4 +1,4 @@
-# CapyUI Makefile — 2.13.1 (alpha.277) — ABI 2.x (packaging hotfix pós-2.13.0)
+# CapyUI Makefile — 2.19.0 — ABI capy-ui-widget 2.19 (advanced widget state: chart dataset)
 #
 # CapyUI owns and publishes its own capypkg modules. The build does NOT
 # touch CapyOS sources. After the alpha.241 migration the desktop session
@@ -39,6 +39,11 @@ TEST_BIN := $(BUILD_DIR)/test_widget_contracts
 
 # Desktop-session sources (owned by CapyUI after the alpha.241 migration).
 SRC_DESKTOP_SESSION := src/desktop/*.c src/window/*.c src/apps/*.c
+# Path to CapyOS public headers, required only by `make lint-desktop-session`.
+# The desktop-session sources include CapyOS adapter/kernel headers and only
+# compile through the cross-repo build path; point this at a CapyOS checkout.
+# See docs/roadmap/contracts/desktop-session-coupling.md.
+CAPYOS_INCLUDE ?= ../CapyOS/include
 
 # ── capypkg packaging ──────────────────────────────────────────────────────
 CAPY_PKG_DIR := $(BUILD_DIR)/capypkg
@@ -64,7 +69,8 @@ MODULES_INDEX := $(CAPY_PKG_DIR)/modules-index.txt
 
 MODULE_INDEX_MANIFESTS := $(WIDGET_PKG_MANIFEST) $(DESKTOP_PKG_MANIFEST)
 
-.PHONY: all clean lint security test validate version-check \
+.PHONY: all clean lint security test validate version-check check-decoupling \
+        lint-desktop-session \
         package package-widget-core package-desktop-session package-index package-clean
 
 all: test
@@ -82,16 +88,55 @@ test: $(TEST_BIN)
 lint:
 	$(CC) $(CPPFLAGS) $(CFLAGS) -fsyntax-only $(SRC_WIDGET)
 	git diff --check
-	test "$(VERSION)" = "2.13.1"
+	test "$(VERSION)" = "2.19.0"
 
 security:
 	$(CC) $(CPPFLAGS) $(CFLAGS) -D_FORTIFY_SOURCE=2 -fstack-protector-strong -fPIE -fsyntax-only $(SRC_WIDGET)
 
+# version-check also pins the contract-test count so silent test drift trips
+# CI: every defined test_*() must be registered in main(), so the count of
+# definitions must equal the count of call-sites and both must equal the
+# documented total. Bump this number (and the docs) when adding tests.
 version-check:
-	test "$(VERSION)" = "2.13.1"
-	grep -q "Version: 2.13.1" README.md
+	test "$(VERSION)" = "2.19.0"
+	grep -q "Version: 2.19.0" README.md
+	test "$$(grep -cE '^  test_[a-z0-9_]+\(\);' tests/test_widget_contracts.c)" = "321"
+	test "$$(grep -cE '^static void test_[a-z0-9_]+\(void\)' tests/test_widget_contracts.c)" = "321"
 
-validate: lint security test version-check
+validate: lint security check-decoupling test version-check
+
+# Decoupling invariant (cheap, local): the PORTABLE widget core must never
+# include CapyOS kernel/gui/driver headers (rule 10-decoupling-discipline).
+# This is a documented release gate (see STATUS.md "próximos passos") that
+# used to be run by hand; it is now part of `validate`. src/widget today only
+# pulls <stddef.h>/<stdint.h> + local "capy_*.h", so this passes silently.
+check-decoupling:
+	@bad=$$(grep -rnE '^[[:space:]]*#[[:space:]]*include[[:space:]]*<(gui|kernel|capyos|drivers|fs|net|auth|arch|services|shell|core|lang|util|memory)/' src/widget || true) ; \
+	if [ -n "$$bad" ]; then \
+	  echo "decoupling violation: src/widget must not include CapyOS headers:" ; \
+	  echo "$$bad" ; \
+	  exit 1 ; \
+	fi ; \
+	echo "[check-decoupling] src/widget is free of CapyOS headers"
+
+# External-only syntax gate for the desktop-session sources. These include
+# CapyOS adapter/kernel headers (see docs/roadmap/contracts/desktop-session-coupling.md)
+# and therefore DO NOT build standalone — the canonical gate is the cross-repo
+# build (CapyOS `make all64 PROFILE=full`). This target is a best-effort
+# syntax check; run it with a CapyOS checkout:
+#   make lint-desktop-session CAPYOS_INCLUDE=../CapyOS/include
+# It is intentionally NOT part of `validate` because it needs external headers.
+lint-desktop-session:
+	@if [ ! -d "$(CAPYOS_INCLUDE)" ]; then \
+	  echo "lint-desktop-session: CAPYOS_INCLUDE='$(CAPYOS_INCLUDE)' not found." ; \
+	  echo "Point it at a CapyOS checkout, e.g.:" ; \
+	  echo "  make lint-desktop-session CAPYOS_INCLUDE=../CapyOS/include" ; \
+	  echo "Canonical gate is CapyOS: make all64 PROFILE=full" ; \
+	  exit 2 ; \
+	fi
+	$(CC) $(CPPFLAGS) $(CFLAGS) -fsyntax-only \
+	  -Isrc/widget -Isrc -I$(CAPYOS_INCLUDE) $(wildcard $(SRC_DESKTOP_SESSION))
+	@echo "[lint-desktop-session] syntax OK against $(CAPYOS_INCLUDE)"
 
 package: package-widget-core package-desktop-session package-index
 

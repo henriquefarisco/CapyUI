@@ -12,9 +12,9 @@
 >
 > **🚨 MAJOR RELEASE v2.0.0:** primeiro **major bump** desde o freeze v1.0. **Quebra controlada conservadora**: nenhum símbolo do 1.x foi removido em 2.0.0, mas o major bump abre a porta para remoções em minors 2.x sob a `deprecation-policy.md`. **Terceiro bump de DL schema** (6 → **7**) com a op aditiva `CAPY_DL_PLUGIN_OP`. Nova superfície de plugin (`struct capy_plugin_descriptor`, `capy_plugin_register/unregister_all`, macros `CAPYUI_API_VERSION_TAG` e `CAPY_MAX_PLUGINS`). **`sizeof(capy_widget_context)` cresce** (8 pointer slots + count). **1.x permanece em LTS por ≥12 meses pós-2.0**.
 
-**Última revisão:** 2026-05-21 (após `v2.13.0` — login screen plumbing; **fase 2.x COMPLETA 14/14**)
-**Tag CapyUI mais recente:** `v2.13.0` (ABI `capy-ui-widget` **2.13**, DL schema **7**)
-**Tag CapyOS pinada no contrato CapyUI:** `0.8.0-alpha.244+20260520` (ver `docs/compatibility.md`)
+**Última revisão:** 2026-05-29 (após `v2.19.0` — advanced widget state: chart dataset; 6ª fatia da trilha 2.14+ de estado dos advanced widgets)
+**Tag CapyUI mais recente:** `v2.19.0` (ABI `capy-ui-widget` **2.19**, DL schema **7**)
+**Tag CapyOS pinada no contrato CapyUI:** `0.8.0-alpha.261+20260529` (ver `docs/compatibility.md`; a matriz CapyOS carrega a row-resumo `capy-ui-widget` v2.19 / display-list schema v7 desde a sincronização cross-repo de 2026-05-29)
 
 ## Política
 
@@ -213,9 +213,100 @@ Adicionar (ou atualizar) a linha da ABI `capy-ui-widget` para refletir as três 
   |   Taxonomia compartilhada por login screen + lock screen + user switcher.
   |   Biometric/SSO, PIN keypad, locked-badge animation, wake-screen deferidos para 3.x.
   |   DL schema permanece 7. **FASE 2.x COMPLETA (14/14)**. |
+
+| capy-ui-widget | **2.14** | aditivo (1ª fatia de estado dos advanced widgets) | delivered |
+  | Advanced widget state — date picker:
+  |   struct capy_date (year u16 / month u8 / day u8; 0 = unset),
+  |   tail field date_value em capy_widget (válido só p/ DATE_PICKER; sizeof +4B),
+  |   4 APIs (capy_date_is_valid, capy_widget_set_date/clear_date/get_date).
+  |   Calendário Gregoriano proléptico (bissexto 4/100/400), fail-closed,
+  |   zero-alloc/zero-float, total. capy_widget_serialize NÃO muda.
+  |   Macros 2/14/0; CAPYUI_API_VERSION_TAG = 0x00020E00.
+  |   DL schema permanece 7. +8 testes (273→281). |
+
+| capy-ui-widget | **2.15** | aditivo (2ª fatia de estado dos advanced widgets) | delivered |
+  | Advanced widget state — color picker:
+  |   tail fields picker_color (0xAARRGGBB) + picker_color_set em capy_widget
+  |   (válido só p/ COLOR_PICKER; sizeof 816→824),
+  |   4 APIs (capy_color_pack, capy_widget_set_color/clear_color/get_color).
+  |   Cast-before-shift (sem UB no byte de alpha), fail-closed por tipo,
+  |   zero-alloc/zero-float, total. capy_widget_serialize NÃO muda.
+  |   Macros 2/15/0; CAPYUI_API_VERSION_TAG = 0x00020F00.
+  |   DL schema permanece 7. +8 testes (281→289). |
+
+| capy-ui-widget | **2.16** | aditivo (3ª fatia de estado dos advanced widgets) | delivered |
+  | Advanced widget state — table columns:
+  |   tail fields table_column_widths (caller-owned const uint16_t*) +
+  |   table_column_count em capy_widget (válido só p/ TABLE; sizeof 824→840),
+  |   4 APIs (capy_widget_set_table_columns/clear_table_columns/
+  |   table_column_count/table_column_width).
+  |   Array caller-owned (zero-alloc, CapyUI nunca copia/aloca/libera),
+  |   acessor bounds-checked / fail-closed (index >= count -> -1),
+  |   zero-float, total. capy_widget_serialize NÃO serializa o modelo.
+  |   Macros 2/16/0; CAPYUI_API_VERSION_TAG = 0x00021000.
+  |   DL schema permanece 7. +8 testes (289→297). |
+
+| capy-ui-widget | **2.17** | aditivo (4ª fatia de estado dos advanced widgets) | delivered |
+  | Advanced widget state — autocomplete suggestions:
+  |   tail fields autocomplete_items (caller-owned const char *const *) +
+  |   autocomplete_count + autocomplete_selected (int32, -1 = nenhum) em
+  |   capy_widget (válido só p/ AUTOCOMPLETE; sizeof 840→856),
+  |   6 APIs (capy_widget_set_autocomplete/clear_autocomplete/
+  |   autocomplete_count/autocomplete_item/set_autocomplete_selected/
+  |   get_autocomplete_selected).
+  |   Lista caller-owned (zero-alloc, idioma do drop_accepted_types),
+  |   acessor bounds-checked + cursor de seleção com clamp/fail-closed
+  |   (index < -1 ou index >= count -> -1; seleção clampada na leitura),
+  |   zero-float, total. capy_widget_serialize NÃO serializa lista nem seleção.
+  |   Macros 2/17/0; CAPYUI_API_VERSION_TAG = 0x00021100.
+  |   DL schema permanece 7. +8 testes (297→305). |
+
+| capy-ui-widget | **2.18** | aditivo (5ª fatia de estado dos advanced widgets) | delivered |
+  | Advanced widget state — tree hierarchy:
+  |   tail fields tree_collapsed (uint8, 0 = expandido default) +
+  |   tree_depth (uint16, indent) em capy_widget (válido só p/ TREE;
+  |   sizeof 856→864),
+  |   5 APIs (capy_widget_set_tree_collapsed/tree_is_collapsed/
+  |   set_tree_depth/tree_depth/tree_row_visible).
+  |   tree_row_visible caminha a cadeia de pais (fail-closed): 0 se algum
+  |   ancestral TREE está collapsed (só ancestrais escondem; o próprio fold
+  |   do nó não o esconde), 1 caso contrário. Zero-alloc, zero-float, total.
+  |   capy_widget_serialize NÃO serializa fold/depth (UI efêmero).
+  |   Macros 2/18/0; CAPYUI_API_VERSION_TAG = 0x00021200.
+  |   DL schema permanece 7. +8 testes (305→313). |
+
+| capy-ui-widget | **2.19** | aditivo (6ª fatia de estado dos advanced widgets) | delivered |
+  | Advanced widget state — chart dataset:
+  |   tail fields chart_values (caller-owned const int32_t*) +
+  |   chart_count em capy_widget (válido só p/ CHART; sizeof 864→880),
+  |   5 APIs (capy_widget_set_chart_data/clear_chart_data/chart_count/
+  |   chart_value/chart_range).
+  |   Array caller-owned (zero-alloc, CapyUI nunca copia/aloca/libera),
+  |   acessor bounds-checked + redução chart_range (scan single-pass do
+  |   min/max assinado; 1 com dados, 0 vazio com out zerado, -1 erro),
+  |   zero-float, total. capy_widget_serialize NÃO serializa o dataset.
+  |   Macros 2/19/0; CAPYUI_API_VERSION_TAG = 0x00021300.
+  |   DL schema permanece 7. +8 testes (313→321). |
 ```
 
 (Adaptar à formatação real do arquivo no momento da edição. As entradas das ABIs 1.1 e 1.2 podem já existir mas com texto pré-1.3.)
+
+> **Ação CapyOS para 2.14 + 2.15 + 2.16 + 2.17 + 2.18 + 2.19 (nenhuma mudança obrigatória de comportamento):**
+> Todas as seis ABI puramente aditivas, DL schema inalterado (7), manifest/módulos/gate
+> inalterados. Requer apenas: (1) bump da row-resumo `capy-ui-widget` para
+> **v2.19** na `compatibility-matrix.md`; (2) opcionalmente listar no integration
+> contract, sob "since 2.14".."2.19", os símbolos `capy_date_*`/
+> `capy_widget_*_date` (2.14), `capy_color_pack`/`capy_widget_*_color` (2.15),
+> `capy_widget_*_table_columns`/`capy_widget_table_column_*` (2.16),
+> `capy_widget_*_autocomplete*`/`capy_widget_autocomplete_*` (2.17),
+> `capy_widget_*_tree_*`/`capy_widget_tree_*` (2.18) e
+> `capy_widget_*_chart_*`/`capy_widget_chart_*` (2.19);
+> (3) nova audit row `compatibility-audit-2026-05-29.md` cobrindo até `v2.19.0`.
+> `sizeof(capy_widget)` cresce de 808 (2.13) → 816 (2.14) → 824 (2.15) → 840 (2.16)
+> → 856 (2.17) → 864 (2.18) → 880 (2.19) — recompilar consumidores; nenhum realloc de
+> buffer de DL é necessário (o widget é alocado pelo allocator do host). Os modelos
+> caller-owned da 2.16 (colunas), 2.17 (sugestões) e 2.19 (dataset do gráfico) seguem a
+> posse do host; a 2.18 (fold/indent da árvore) é estado de UI interno ao widget.
 
 ### 2. `docs/reference/integration/capyui-widget-integration-contract.md`
 

@@ -3985,3 +3985,342 @@ int capy_perf_counters_snapshot(const struct capy_widget_context *ctx,
   out->reserved[0] = 0u;
   return 0;
 }
+
+/* ── v2.14: advanced widget state — date picker ────────────────────────── */
+
+int capy_date_is_valid(uint16_t year, uint8_t month, uint8_t day) {
+  static const uint8_t days_in_month[12] = {
+      31u, 28u, 31u, 30u, 31u, 30u, 31u, 31u, 30u, 31u, 30u, 31u};
+  uint8_t max_day;
+  if (year == 0u || month < 1u || month > 12u || day < 1u) {
+    return 0;
+  }
+  max_day = days_in_month[month - 1u];
+  if (month == 2u && ((year % 4u == 0u && year % 100u != 0u) ||
+                      year % 400u == 0u)) {
+    max_day = 29u; /* leap February */
+  }
+  return day <= max_day ? 1 : 0;
+}
+
+int capy_widget_set_date(struct capy_widget *w, uint16_t year, uint8_t month,
+                         uint8_t day) {
+  if (!w || w->type != CAPY_WIDGET_DATE_PICKER) {
+    return -1;
+  }
+  if (!capy_date_is_valid(year, month, day)) {
+    return -1; /* fail-closed: stored value left unchanged */
+  }
+  w->date_value.year = year;
+  w->date_value.month = month;
+  w->date_value.day = day;
+  return 0;
+}
+
+int capy_widget_clear_date(struct capy_widget *w) {
+  if (!w || w->type != CAPY_WIDGET_DATE_PICKER) {
+    return -1;
+  }
+  w->date_value.year = 0u;
+  w->date_value.month = 0u;
+  w->date_value.day = 0u;
+  return 0;
+}
+
+int capy_widget_get_date(const struct capy_widget *w, struct capy_date *out) {
+  if (!w || w->type != CAPY_WIDGET_DATE_PICKER || !out) {
+    return -1;
+  }
+  *out = w->date_value;
+  return capy_date_is_valid(w->date_value.year, w->date_value.month,
+                            w->date_value.day)
+             ? 1
+             : 0;
+}
+
+/* ── v2.15: advanced widget state — color picker ───────────────────────── */
+
+uint32_t capy_color_pack(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
+  /* 0xAARRGGBB. Cast each channel to uint32_t before shifting so the high
+   * byte never triggers signed-shift UB (cf. the 1.3 zero-float/strict-C11
+   * cleanup). */
+  return ((uint32_t)a << 24) | ((uint32_t)r << 16) | ((uint32_t)g << 8) |
+         (uint32_t)b;
+}
+
+int capy_widget_set_color(struct capy_widget *w, uint32_t argb) {
+  if (!w || w->type != CAPY_WIDGET_COLOR_PICKER) {
+    return -1;
+  }
+  w->picker_color = argb;
+  w->picker_color_set = 1u;
+  return 0;
+}
+
+int capy_widget_clear_color(struct capy_widget *w) {
+  if (!w || w->type != CAPY_WIDGET_COLOR_PICKER) {
+    return -1;
+  }
+  w->picker_color = 0u;
+  w->picker_color_set = 0u;
+  return 0;
+}
+
+int capy_widget_get_color(const struct capy_widget *w, uint32_t *out) {
+  if (!w || w->type != CAPY_WIDGET_COLOR_PICKER || !out) {
+    return -1;
+  }
+  *out = w->picker_color;
+  return w->picker_color_set ? 1 : 0;
+}
+
+/* ── v2.16: advanced widget state — table columns ──────────────────────── */
+
+int capy_widget_set_table_columns(struct capy_widget *w,
+                                  const uint16_t *widths, uint16_t count) {
+  if (!w || w->type != CAPY_WIDGET_TABLE) {
+    return -1;
+  }
+  if (count == 0u) {
+    w->table_column_widths = 0;
+    w->table_column_count = 0u;
+    return 0;
+  }
+  if (!widths) {
+    return -1; /* fail-closed: count > 0 needs a real array; state unchanged */
+  }
+  w->table_column_widths = widths;
+  w->table_column_count = count;
+  return 0;
+}
+
+int capy_widget_clear_table_columns(struct capy_widget *w) {
+  if (!w || w->type != CAPY_WIDGET_TABLE) {
+    return -1;
+  }
+  w->table_column_widths = 0;
+  w->table_column_count = 0u;
+  return 0;
+}
+
+int capy_widget_table_column_count(const struct capy_widget *w) {
+  if (!w || w->type != CAPY_WIDGET_TABLE) {
+    return -1;
+  }
+  return (int)w->table_column_count;
+}
+
+int capy_widget_table_column_width(const struct capy_widget *w, uint16_t index,
+                                   uint16_t *out_width) {
+  if (!w || w->type != CAPY_WIDGET_TABLE || !out_width) {
+    return -1;
+  }
+  if (!w->table_column_widths || index >= w->table_column_count) {
+    return -1; /* no model / out-of-range index — fail-closed */
+  }
+  *out_width = w->table_column_widths[index];
+  return 0;
+}
+
+/* ── v2.17: advanced widget state — autocomplete suggestions ───────────── */
+
+int capy_widget_set_autocomplete(struct capy_widget *w,
+                                 const char *const *items, uint16_t count) {
+  if (!w || w->type != CAPY_WIDGET_AUTOCOMPLETE) {
+    return -1;
+  }
+  if (count == 0u) {
+    w->autocomplete_items = 0;
+    w->autocomplete_count = 0u;
+    w->autocomplete_selected = -1;
+    return 0;
+  }
+  if (!items) {
+    return -1; /* fail-closed: count > 0 needs a real array; state unchanged */
+  }
+  w->autocomplete_items = items;
+  w->autocomplete_count = count;
+  w->autocomplete_selected = -1; /* new list -> nothing selected yet */
+  return 0;
+}
+
+int capy_widget_clear_autocomplete(struct capy_widget *w) {
+  if (!w || w->type != CAPY_WIDGET_AUTOCOMPLETE) {
+    return -1;
+  }
+  w->autocomplete_items = 0;
+  w->autocomplete_count = 0u;
+  w->autocomplete_selected = -1;
+  return 0;
+}
+
+int capy_widget_autocomplete_count(const struct capy_widget *w) {
+  if (!w || w->type != CAPY_WIDGET_AUTOCOMPLETE) {
+    return -1;
+  }
+  return (int)w->autocomplete_count;
+}
+
+int capy_widget_autocomplete_item(const struct capy_widget *w, uint16_t index,
+                                  const char **out_item) {
+  if (!w || w->type != CAPY_WIDGET_AUTOCOMPLETE || !out_item) {
+    return -1;
+  }
+  if (!w->autocomplete_items || index >= w->autocomplete_count) {
+    return -1; /* no list / out-of-range index — fail-closed */
+  }
+  *out_item = w->autocomplete_items[index];
+  return 0;
+}
+
+int capy_widget_set_autocomplete_selected(struct capy_widget *w,
+                                          int32_t index) {
+  if (!w || w->type != CAPY_WIDGET_AUTOCOMPLETE) {
+    return -1;
+  }
+  if (index < -1 || index >= (int32_t)w->autocomplete_count) {
+    return -1; /* only -1 (clear) or a live index is accepted — fail-closed */
+  }
+  w->autocomplete_selected = index;
+  return 0;
+}
+
+int capy_widget_get_autocomplete_selected(const struct capy_widget *w,
+                                          int32_t *out_index) {
+  int32_t sel;
+  if (!w || w->type != CAPY_WIDGET_AUTOCOMPLETE || !out_index) {
+    return -1;
+  }
+  sel = w->autocomplete_selected;
+  /* Clamp against the live count so a stale selection never points past the
+   * list (also masks the zero-initialised default of a fresh widget). */
+  if (w->autocomplete_count == 0u || sel < 0 ||
+      sel >= (int32_t)w->autocomplete_count) {
+    sel = -1;
+  }
+  *out_index = sel;
+  return sel >= 0 ? 1 : 0;
+}
+
+/* ── v2.18: advanced widget state — tree hierarchy ─────────────────────── */
+
+int capy_widget_set_tree_collapsed(struct capy_widget *w, int collapsed) {
+  if (!w || w->type != CAPY_WIDGET_TREE) {
+    return -1;
+  }
+  w->tree_collapsed = collapsed ? 1u : 0u;
+  return 0;
+}
+
+int capy_widget_tree_is_collapsed(const struct capy_widget *w) {
+  if (!w || w->type != CAPY_WIDGET_TREE) {
+    return -1;
+  }
+  return w->tree_collapsed ? 1 : 0;
+}
+
+int capy_widget_set_tree_depth(struct capy_widget *w, uint16_t depth) {
+  if (!w || w->type != CAPY_WIDGET_TREE) {
+    return -1;
+  }
+  w->tree_depth = depth;
+  return 0;
+}
+
+int capy_widget_tree_depth(const struct capy_widget *w) {
+  if (!w || w->type != CAPY_WIDGET_TREE) {
+    return -1;
+  }
+  return (int)w->tree_depth;
+}
+
+int capy_widget_tree_row_visible(const struct capy_widget *w) {
+  const struct capy_widget *p;
+  if (!w || w->type != CAPY_WIDGET_TREE) {
+    return -1;
+  }
+  for (p = w->parent; p != 0; p = p->parent) {
+    if (p->type == CAPY_WIDGET_TREE && p->tree_collapsed) {
+      return 0; /* a collapsed TREE ancestor hides this row */
+    }
+  }
+  return 1;
+}
+
+/* ── v2.19: advanced widget state — chart dataset ──────────────────────── */
+
+int capy_widget_set_chart_data(struct capy_widget *w, const int32_t *values,
+                               uint16_t count) {
+  if (!w || w->type != CAPY_WIDGET_CHART) {
+    return -1;
+  }
+  if (count == 0u) {
+    w->chart_values = 0;
+    w->chart_count = 0u;
+    return 0;
+  }
+  if (!values) {
+    return -1; /* fail-closed: count > 0 needs a real array; state unchanged */
+  }
+  w->chart_values = values;
+  w->chart_count = count;
+  return 0;
+}
+
+int capy_widget_clear_chart_data(struct capy_widget *w) {
+  if (!w || w->type != CAPY_WIDGET_CHART) {
+    return -1;
+  }
+  w->chart_values = 0;
+  w->chart_count = 0u;
+  return 0;
+}
+
+int capy_widget_chart_count(const struct capy_widget *w) {
+  if (!w || w->type != CAPY_WIDGET_CHART) {
+    return -1;
+  }
+  return (int)w->chart_count;
+}
+
+int capy_widget_chart_value(const struct capy_widget *w, uint16_t index,
+                            int32_t *out_value) {
+  if (!w || w->type != CAPY_WIDGET_CHART || !out_value) {
+    return -1;
+  }
+  if (!w->chart_values || index >= w->chart_count) {
+    return -1; /* no data / out-of-range index — fail-closed */
+  }
+  *out_value = w->chart_values[index];
+  return 0;
+}
+
+int capy_widget_chart_range(const struct capy_widget *w, int32_t *out_min,
+                            int32_t *out_max) {
+  int32_t min;
+  int32_t max;
+  int32_t v;
+  uint16_t i;
+  if (!w || w->type != CAPY_WIDGET_CHART || !out_min || !out_max) {
+    return -1;
+  }
+  if (!w->chart_values || w->chart_count == 0u) {
+    *out_min = 0;
+    *out_max = 0;
+    return 0; /* no data */
+  }
+  min = w->chart_values[0];
+  max = w->chart_values[0];
+  for (i = 1u; i < w->chart_count; ++i) {
+    v = w->chart_values[i];
+    if (v < min) {
+      min = v;
+    }
+    if (v > max) {
+      max = v;
+    }
+  }
+  *out_min = min;
+  *out_max = max;
+  return 1;
+}
