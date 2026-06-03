@@ -8,7 +8,7 @@
 
 `capy-ui-plugin` é uma ABI independente de `capy-ui-widget`. Plugins importam apenas headers públicos do plugin SDK.
 
-## Descriptor
+## Descripto
 
 ```c
 struct capy_plugin_descriptor {

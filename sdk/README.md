@@ -10,7 +10,7 @@ internal sources.
 - **Seed published in `v2.0.0`.** APIs come from `src/widget/capy_widget.h`
   and `src/widget/capy_display_list.h`. The SDK does not yet vendor those
   headers; consumers `#include "capy_widget.h"` from the publisher's
-  include path. A future patch may copy a curated subset under
+  include path. A future patch may copy a curated subset unde
   `sdk/include/capyui/` so downstreams can pin a smaller header set.
 - **What is stable in 2.0.0:**
   - The plugin descriptor and context structs (`capy_plugin_descriptor`,
@@ -26,7 +26,7 @@ internal sources.
 1. Declare a `capy_plugin_descriptor` with your reverse-DNS `id`, a
    human-readable `version`, and the host ABI you require via
    `capy_ui_abi_required` (use `CAPYUI_API_VERSION_TAG` to target the
-   exact host you compile against, or hand-roll an older value for
+   exact host you compile against, or hand-roll an older value fo
    forward-compatibility).
 2. Provide a caller-owned `capy_widget_allocator` so the host can audit
    that your plugin allocates from its own arena rather than reusing
@@ -42,11 +42,11 @@ internal sources.
 ## How plugins emit into the display-list
 
 - The widget core itself does **not** emit `CAPY_DL_PLUGIN_OP`. Hosts
-  that want plugin output append commands of this kind through their
+  that want plugin output append commands of this kind through thei
   own dispatcher (typically inside the `emit` callback of the descriptor).
 - The op carries an opaque 32-byte payload reusing the existing
   `capy_dl_cmd` fields (`rect`, `color`, `text_offset`, `text_len`,
-  `border_width`, `font_size`, `font_id`, `image_id`) which together
+  `border_width`, `font_size`, `font_id`, `image_id`) which togethe
   sum to 32 bytes. `image_id` is the canonical "plugin id" slot —
   hosts map it back to a registered descriptor.
 - Pre-2.0 consumers reading `dl->version < 7` must treat the op as
@@ -76,7 +76,7 @@ See `sdk/plugin-template.c` for a minimal compilable example that:
 
 There are **no symbol removals in 2.0.0** despite the major bump. The
 bump signals that the deprecation-policy door is now open for 2.x
-minors: future bumps can remove APIs after the standard ≥2 minor
+minors: future bumps can remove APIs after the standard ≥2 mino
 deprecation window. 1.x continues in LTS for at least 12 months
 post-2.0 per `docs/roadmap/contracts/deprecation-policy.md`.
 

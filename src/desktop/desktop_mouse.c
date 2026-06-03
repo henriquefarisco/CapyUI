@@ -15,7 +15,7 @@
  * moved verbatim from `desktop.c` (lines 527-779) and parity verified
  * via diff.
  *
- * The single static helper used by the mouse handler
+ * The single static helper used by the mouse handle
  * (`desktop_overlay_active`, 4 lines) is duplicated as `static` here
  * to preserve the per-TU "no link-time coupling" pattern already used
  * across the GUI desktop files.
@@ -128,7 +128,7 @@ int desktop_handle_mouse(struct desktop_session *ds) {
         int left_down = (mev.buttons & MOUSE_BUTTON_LEFT) ? 1 : 0;
 
         if (left_down) {
-          /* Etapa UX W7-ish (2026-05-03): inline_prompt tem maior
+          /* Etapa UX W7-ish (2026-05-03): inline_prompt tem maio
            * prioridade. Click fora do popup -> cancela; click
            * dentro -> mantem (sem agir). */
           if (inline_prompt_is_open() &&

@@ -10,7 +10,7 @@
 
 #include "capy_widget.h"
 
-/* Per-plugin allocator. In a real plugin you would point this at your
+/* Per-plugin allocator. In a real plugin you would point this at you
  * own arena (e.g. a `capy_widget_pool` from `0.15` or a `capy_slab` from
  * `1.7`). The widget core stores the pointer but never calls into it. */
 static void *template_plugin_alloc(uint32_t bytes, void *user_data) {

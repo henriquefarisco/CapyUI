@@ -2,11 +2,14 @@
 #include "capy_display_list.h"
 #include "capy_dl_gpu.h"
 
+#include <stdio.h>
+
 static int failures;
 
 #define EXPECT(expr)      \
   do {                    \
     if (!(expr)) {        \
+      fprintf(stderr, "EXPECT failed at %s:%d: %s\n", __FILE__, __LINE__, #expr); \
       ++failures;         \
       return;             \
     }                     \
@@ -3089,17 +3092,20 @@ static void test_gesture_ignores_non_touch_and_extra_touch_ids(void) {
   /* A real BEGIN. */
   gesture_make_touch(&ev, &p, CAPY_WIDGET_EVENT_TOUCH_BEGIN, 1u, 10, 10);
   EXPECT(capy_gesture_feed(&r, &ev, 10u) == 0);
-  /* A second BEGIN with a different touch_id while already active is
-   * ignored — state must remain on the first touch. */
+  /* A second BEGIN with a different touch_id while already active opens a
+   * two-finger session. Single-touch TAP must be suppressed until reset. */
   gesture_make_touch(&ev, &p, CAPY_WIDGET_EVENT_TOUCH_BEGIN, 99u, 500, 500);
   EXPECT(capy_gesture_feed(&r, &ev, 20u) == 0);
   EXPECT(r.touch_id == 1u);
   EXPECT(r.start_pos.x == 10 && r.start_pos.y == 10);
-  /* The first touch can still complete as a TAP. */
+  EXPECT(r.touch2_active == 1u);
+  EXPECT(r.touch2_id == 99u);
+  /* Ending either touch resets the two-finger session without queuing TAP. */
   gesture_make_touch(&ev, &p, CAPY_WIDGET_EVENT_TOUCH_END, 1u, 11, 9);
-  EXPECT(capy_gesture_feed(&r, &ev, 30u) == 1);
-  EXPECT(capy_gesture_poll(&r, &out) == 1);
-  EXPECT(out.kind == (uint8_t)CAPY_GESTURE_TAP);
+  EXPECT(capy_gesture_feed(&r, &ev, 30u) == 0);
+  EXPECT(capy_gesture_poll(&r, &out) == 0);
+  EXPECT(r.active == 0u);
+  EXPECT(r.touch2_active == 0u);
 }
 
 /* ── v2.3: undo/redo stack (since 2.3.0) ────────────────────────────────── */
@@ -5272,11 +5278,11 @@ static void plugin_test_destroy(struct capy_plugin_context *pc) {
 }
 
 static void test_plugin_version_tag_macro(void) {
-  /* (major << 16) | (minor << 8) | patch. For 2.19.0 -> 0x00021300. */
+  /* (major << 16) | (minor << 8) | patch. For 2.22.0 -> 0x00021600. */
   EXPECT(CAPYUI_API_VERSION_MAJOR == 2);
-  EXPECT(CAPYUI_API_VERSION_MINOR == 19);
+  EXPECT(CAPYUI_API_VERSION_MINOR == 22);
   EXPECT(CAPYUI_API_VERSION_PATCH == 0);
-  EXPECT(CAPYUI_API_VERSION_TAG == 0x00021300u);
+  EXPECT(CAPYUI_API_VERSION_TAG == 0x00021600u);
 }
 
 static void test_plugin_register_valid_descriptor(void) {
@@ -7194,7 +7200,7 @@ static void test_v1_freeze_markers(void) {
   /* Public version macros must line up with VERSION + Makefile while the
    * v1 freeze anchors remain present. */
   EXPECT(CAPYUI_API_VERSION_MAJOR == 2);
-  EXPECT(CAPYUI_API_VERSION_MINOR == 19);
+  EXPECT(CAPYUI_API_VERSION_MINOR == 22);
   EXPECT(CAPYUI_API_VERSION_PATCH == 0);
   /* CAPYUI_API_DEPRECATED is invocable as a macro and accepts a string lit;
    * we already saw it expand above on capyui_v1_freeze_canary. The canary

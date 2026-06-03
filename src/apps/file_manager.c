@@ -1,7 +1,7 @@
 /*
  * src/apps/file_manager.c
  *
- * Entry point and lifecycle for the file manager application. After
+ * Entry point and lifecycle for the file manager application. Afte
  * the 2026-05-15 refactor this file holds:
  *
  *   - the singleton app state and module-level globals
@@ -10,7 +10,7 @@
  *   - directory-load + navigation (load_path, navigate, back, up)
  *   - window lifecycle (open, open_at, cleanup, on_close)
  *   - window event dispatchers (paint/resize/mouse/scroll handlers)
- *   - the public `file_manager_handle_click` toolbar router
+ *   - the public `file_manager_handle_click` toolbar route
  *
  * Painting + drawing primitives live in `file_manager_view.c`.
  * Drag-and-drop + right-click context menu live in

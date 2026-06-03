@@ -20,7 +20,7 @@ v0.3.0 (focus) ─── adiciona CAPY_DL_FOCUS_RING (DL schema → v2)
 v0.4.0 (text editing) ── usa focus para roteamento de teclado
    │
    ▼
-v0.5.0 (animation) ── independente, mas TEXT/BUTTON podem animar
+v0.5.0 (animation) ── independente, mas TEXT/BUTTON podem anima
    │
    ▼
 v0.6.0 (theme tokens v2) ── style usa tokens

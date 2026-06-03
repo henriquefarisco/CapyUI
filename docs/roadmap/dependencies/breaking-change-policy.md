@@ -44,7 +44,7 @@ Para remover ou mudar semântica de símbolo público:
 
 Total: **≥2 minor releases entre deprecação e remoção**, e remoção só em major bump.
 
-### Quebra de ABI major
+### Quebra de ABI majo
 
 Apenas em transições `v1.x → v2.0`, `v2.x → v3.0`, etc., com:
 
@@ -72,7 +72,7 @@ Pré-1.0, exceção permitida se:
 
 Toda exceção exige changelog destacado e comunicação aos consumidores conhecidos.
 
-## Como comunicar
+## Como comunica
 
 - `CHANGELOG.md`: entrada explícita na seção `### Deprecado` ou `### Removido`.
 - Header: comentário `/* DEPRECATED in 1.N: use foo_v2 instead. Will be removed in 2.0. */`.

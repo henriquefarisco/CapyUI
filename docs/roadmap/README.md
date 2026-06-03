@@ -58,7 +58,7 @@ Cada arquivo `vX.Y-*.md` segue o template:
 ## Notas de compatibilidade
 ```
 
-## Como navegar
+## Como navega
 
 1. Consulte `STATUS.md` para saber em que fatia o projeto está.
 2. Abra o arquivo da fatia em `short-term/`, `medium-term/` ou `long-term/`.

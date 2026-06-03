@@ -16,7 +16,7 @@
  * Static gates:
  *   - settings_validate_username
  *   - settings_require_admin
- * are exposed via `internal/settings_internal.h` so the click router
+ * are exposed via `internal/settings_internal.h` so the click route
  * in settings.c can run them before invoking apply/start callbacks.
  */
 #include "apps/settings.h"
@@ -39,7 +39,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/* Etapa F4 settings-actions (2026-05-03): in-memory settings buffer
+/* Etapa F4 settings-actions (2026-05-03): in-memory settings buffe
  * declared in arch/x86_64/kernel_io_helpers.c. Updates here are
  * detected by the desktop loop and re-applied on the next frame. */
 extern struct system_settings g_shell_settings;
@@ -81,8 +81,8 @@ int settings_require_admin(struct settings_app *app) {
 }
 
 /* === Apply helpers =====================================================
- * Cada acao atualiza /system/config.ini (persistencia) E o buffer
- * em memoria g_shell_settings (visibilidade imediata) sem precisar
+ * Cada acao atualiza /system/config.ini (persistencia) E o buffe
+ * em memoria g_shell_settings (visibilidade imediata) sem precisa
  * de acesso ao desktop_session. */
 
 void apply_theme_choice(const char *theme) {

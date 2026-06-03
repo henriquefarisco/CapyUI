@@ -5,7 +5,7 @@
  * 2026-05-15 refactor this file holds:
  *
  *   - module-level singleton state and tab-label helpers
- *   - the click-row infrastructure shared with the view layer
+ *   - the click-row infrastructure shared with the view laye
  *   - small numeric formatters reused by view/actions (u32/IPv4)
  *   - window lifecycle (open, switch_tab, cleanup, on_close)
  *   - window event dispatchers (paint/resize/mouse handlers)

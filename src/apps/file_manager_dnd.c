@@ -17,7 +17,7 @@
  *   - `file_manager_window_context_menu` (called as `on_context_menu`
  *     callback from `file_manager_open` in the sister TU).
  *
- * All lifecycle, navigation and rendering concerns live in the sister
+ * All lifecycle, navigation and rendering concerns live in the siste
  * files `file_manager.c` and `file_manager_view.c`.
  */
 #include "apps/file_manager.h"
@@ -172,7 +172,7 @@ void file_manager_clear_external_drop(void) {
 }
 
 /* Etapa UX W7-ish (2026-05-03): action_ids reservados para
- * context_menu. Numeracao livre dentro do file_manager (o caller
+ * context_menu. Numeracao livre dentro do file_manager (o calle
  * passa um destes em items[].action_id e recebe de volta no
  * on_pick). */
 #define FM_CTX_OPEN     1u
@@ -309,7 +309,7 @@ static void fm_ctx_pick(uint16_t action_id, void *ctx) {
 
 /* Etapa UX W7-ish (2026-05-03): right-click handler. Mostra menu
  * de contexto na posicao do cursor. Items dependem do alvo:
- *   - Sobre uma linha de arquivo/dir: Open / Delete / Refresh / New File / New Folder
+ *   - Sobre uma linha de arquivo/dir: Open / Delete / Refresh / New File / New Folde
  *   - Sobre area vazia (toolbar/bg): Refresh / New File / New Folder / Up
  */
 void file_manager_window_context_menu(struct gui_window *win, int32_t lx,

@@ -225,7 +225,7 @@ int capy_widget_emit(struct capy_widget *root, struct capy_display_list *dl) {
   snap_text = dl->text_used;
   /* Since 1.5: prepend a DPI_SCOPE marker when the host has set a
    * non-default scale on the display list. The scope rect covers the
-   * root widget bounds; future minors may emit per-subtree scopes for
+   * root widget bounds; future minors may emit per-subtree scopes fo
    * windows on different displays. `image_id` carries the scale (reuses
    * the existing 32-bit slot to avoid bumping struct sizeof). */
   if (dl->dpi_scale_x256 != 256u) {

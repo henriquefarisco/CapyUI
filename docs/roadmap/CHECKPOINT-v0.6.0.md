@@ -56,7 +56,7 @@ src/widget/
 
 ```
 tests/
-└── test_widget_contracts.c   1278 LOC, 47 testes + 1 helper
+└── test_widget_contracts.c   1278 LOC, 47 testes + 1 helpe
 ```
 
 Cobertura por área:

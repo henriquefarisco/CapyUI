@@ -9,7 +9,7 @@
  *   - window-list management (`taskbar_init`, `taskbar_add_window`,
  *     `taskbar_remove_window`, `taskbar_set_focused`)
  *   - clock + tray update entry points
- *   - bar paint (`taskbar_paint`) and click router
+ *   - bar paint (`taskbar_paint`) and click route
  *     (`taskbar_handle_click`)
  *
  * The start menu (data model + popups) lives in

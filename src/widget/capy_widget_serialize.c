@@ -49,7 +49,7 @@ static uint32_t capy_state_read_u32(const uint8_t *p) {
          ((uint32_t)p[3] << 24);
 }
 
-/* FNV-1a 32-bit. Deterministic, zero-state, no division — perfect for
+/* FNV-1a 32-bit. Deterministic, zero-state, no division — perfect fo
  * blob integrity checks. */
 static uint32_t capy_state_fnv1a(const uint8_t *data, uint32_t len) {
   uint32_t hash = 0x811C9DC5u;

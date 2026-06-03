@@ -48,7 +48,7 @@ enum capy_dl_op {
   CAPY_DL_TRANSFORM_POP,
   /* Since 2.0.0 (schema 7): plugin custom op. Carries an opaque 32-byte
    * payload in the existing `rect`/`color`/`text_offset`/`text_len`/
-   * `border_width`/`font_size`/`font_id`/`image_id` slots (which together
+   * `border_width`/`font_size`/`font_id`/`image_id` slots (which togethe
    * sum to 32 bytes); the plugin renderer registered with the host
    * dispatcher decodes the bytes per its own schema. `image_id` doubles
    * as the plugin identifier (host maps it to a registered descriptor)
@@ -73,7 +73,7 @@ struct capy_dl_cmd {
    * consumers see whatever was in `reserved` (zero for emit-produced cmds). */
   uint16_t font_id;
   uint32_t image_id;
-  /* Since 1.9 (schema 6): affine transform payload, valid only for
+  /* Since 1.9 (schema 6): affine transform payload, valid only fo
    * `CAPY_DL_TRANSFORM_PUSH` ops. Zero-filled for every other op (since
    * `capy_dl_push` memsets the whole cmd). Adds 24 bytes to
    * `sizeof(capy_dl_cmd)`; callers that stack-allocate arrays of cmds

@@ -8,7 +8,7 @@
 
 **Único contrato CapyUI que cita estruturas CapyOS.** O adapter vive no lado CapyOS (`CapyOS/src/ui_adapter/`).
 
-## Responsabilidades do adapter
+## Responsabilidades do adapte
 
 1. **Mapeamento de eventos:**
    - `gui_event` (CapyOS) → `capy_widget_event`.

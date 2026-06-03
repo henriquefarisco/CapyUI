@@ -41,7 +41,7 @@ int capy_widget_diff(struct capy_display_list *prev,
 - **Overflow:** retorna `-1` quando `out_cap` excedido; `out_dirty` parcial.
 - **Performance:** O(max(count_prev, count_next)).
 
-## Regras para compositor
+## Regras para composito
 
 1. Ler `dl->version`.
 2. Se `>= 3`, pode usar `DIRTY_HINT` ops.

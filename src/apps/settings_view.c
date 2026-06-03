@@ -148,7 +148,7 @@ static int32_t paint_option_row(struct gui_surface *s, const struct font *f,
   return y + (int32_t)h + 4;
 }
 
-/* Pinta um botao simples ("Add user", "Edit homepage") sem indicador
+/* Pinta um botao simples ("Add user", "Edit homepage") sem indicado
  * de selecao -- so label + borda. Registra como clicavel. */
 static int32_t paint_action_button(struct gui_surface *s,
                                     const struct font *f,
@@ -383,7 +383,7 @@ void settings_paint(struct settings_app *app) {
    * configurada no /system/config.ini (browser_homepage=). Usa
    * uma linha enxuta com prefixo "Home: " seguido do URL. Para
    * URLs longas (>54 chars apos "Home: "), trunca com "..." para
-   * caber em line[80]. Mostra hint sobre como editar (CLI por
+   * caber em line[80]. Mostra hint sobre como editar (CLI po
    * enquanto; futuramente in-place via inline_prompt). */
   case SETTINGS_TAB_BROWSER: {
     /* Etapa F4 settings-actions (2026-05-03): tab Browser com

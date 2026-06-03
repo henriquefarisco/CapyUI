@@ -1,7 +1,7 @@
 /*
  * src/apps/file_manager_view.c
  *
- * Drawing primitives and the main paint routine for the file manager
+ * Drawing primitives and the main paint routine for the file manage
  * window. Carved out of `src/apps/file_manager.c` at the 2026-05-15
  * refactor so each translation unit stays under the 900-line layout
  * limit.
@@ -13,7 +13,7 @@
  *   - `fm_row_height`, `fm_fit_text`, `fm_draw_fit`, `fm_fill_rect`
  *   - `fm_toolbar_layout`, `fm_paint_button`, `fm_row_at`
  *
- * All other concerns (lifecycle, ops, drag-and-drop) live in sister
+ * All other concerns (lifecycle, ops, drag-and-drop) live in siste
  * files: `file_manager.c` and `file_manager_dnd.c`.
  */
 #include "apps/file_manager.h"

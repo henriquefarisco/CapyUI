@@ -83,7 +83,7 @@ struct capy_widget_event {
 };
 ```
 
-## Allocator
+## Allocato
 
 ```c
 typedef void *(*capy_widget_alloc_fn)(size_t size, void *user_data);
