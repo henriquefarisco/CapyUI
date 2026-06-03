@@ -27,7 +27,7 @@
  * No symbol is currently annotated; the macro is published so downstream
  * call sites can compile against it without conditional guards. */
 #define CAPYUI_API_VERSION_MAJOR 2
-#define CAPYUI_API_VERSION_MINOR 19
+#define CAPYUI_API_VERSION_MINOR 22
 #define CAPYUI_API_VERSION_PATCH 0
 
 /* Composite ABI tag (since 2.0) used by plugins to declare the minimum host
@@ -321,10 +321,14 @@ struct capy_spring {
   uint16_t damping;   /* fixed-point Q8.8 */
 };
 
-/* Gesture engine (since 1.4). Deterministic single-touch recognizer for
- * tap / double-tap / long-press / swipe / drag. Pinch and rotate are
- * reserved enum values for a future multi-touch slice and are NOT emitted
- * by the 1.4 recognizer.
+/* Gesture engine (since 1.4; multi-touch since 2.22). Deterministic
+ * recognizer for tap / double-tap / long-press / swipe / drag (single-touch,
+ * since 1.4) plus pinch-in/out and rotate CW/CCW (two-finger, since 2.22).
+ * The pinch/rotate enum values were reserved in 1.4 and are now emitted by
+ * the recognizer when a second finger is tracked; all detection stays
+ * integer-only (pinch = signed Chebyshev-separation delta; rotate direction =
+ * integer cross-product sign, significance = scale-independent |cross|/dot
+ * ratio). No float anywhere.
  *
  * The recognizer is a concrete struct that the caller embeds. Zero malloc;
  * thresholds are caller-tunable after `capy_gesture_recognizer_init` seeds
@@ -341,10 +345,10 @@ enum capy_gesture_kind {
   CAPY_GESTURE_SWIPE_RIGHT,
   CAPY_GESTURE_SWIPE_UP,
   CAPY_GESTURE_SWIPE_DOWN,
-  CAPY_GESTURE_PINCH_IN,     /* reserved, not emitted in 1.4 */
-  CAPY_GESTURE_PINCH_OUT,    /* reserved, not emitted in 1.4 */
-  CAPY_GESTURE_ROTATE_CW,    /* reserved, not emitted in 1.4 */
-  CAPY_GESTURE_ROTATE_CCW,   /* reserved, not emitted in 1.4 */
+  CAPY_GESTURE_PINCH_IN,     /* two-finger, since 2.22 (fingers approach) */
+  CAPY_GESTURE_PINCH_OUT,    /* two-finger, since 2.22 (fingers spread) */
+  CAPY_GESTURE_ROTATE_CW,    /* two-finger, since 2.22 (clockwise, screen y-down) */
+  CAPY_GESTURE_ROTATE_CCW,   /* two-finger, since 2.22 (counter-clockwise) */
   CAPY_GESTURE_DRAG
 };
 
@@ -353,7 +357,7 @@ struct capy_gesture {
   uint8_t reserved[3];
   struct capy_ui_point start;
   struct capy_ui_point end;
-  int32_t magnitude;       /* swipe/drag: pixels; future pinch: percent; rotate: deg*256 */
+  int32_t magnitude;       /* swipe/drag: pixels; pinch (2.22): signed separation delta px (+spread/-approach); rotate (2.22): 0 (direction-only; deg*256 reserved) */
   uint32_t duration_ms;
 };
 
@@ -378,6 +382,23 @@ struct capy_gesture_recognizer {
   uint32_t last_tap_end_tick;
   struct capy_ui_point last_tap_pos;
   struct capy_gesture pending;     /* output queue depth 1 */
+  /* Multi-touch state (since 2.22, tail additive). Tracks a second finger so
+   * the recognizer can emit PINCH_IN/OUT and ROTATE_CW/CCW. `pinch_min_distance_px`
+   * is caller-tunable after init (seeded to 20). The two-finger session begins
+   * when a second TOUCH_BEGIN with a distinct id arrives while one finger is
+   * already down; it captures the baseline separation/vector, emits each of
+   * pinch/rotate at most once (one-shot, like `drag_emitted`), and ends the
+   * moment any finger lifts (full reset). While a session is active the
+   * single-touch tap/swipe/drag/long-press path is suppressed. */
+  uint32_t pinch_min_distance_px;
+  uint8_t touch2_active;
+  uint8_t pinch_emitted;
+  uint8_t rotate_emitted;
+  uint8_t reserved2;               /* must be 0 */
+  uint32_t touch2_id;
+  struct capy_ui_point touch2_pos; /* current position of the 2nd finger */
+  struct capy_ui_point multi_v0;   /* baseline vector (touch1 - touch2) at session start */
+  int32_t multi_start_dist;        /* baseline Chebyshev separation at session start */
 };
 
 /* Locale + RTL (since 0.13) */
@@ -451,6 +472,21 @@ typedef int (*capy_text_metrics_fn)(uint16_t font_id, uint8_t font_size,
                                     uint32_t *out_width, uint32_t *out_height,
                                     void *user_data);
 
+/* Host-provided canvas draw callback (since 2.21).
+ *
+ * Stored on a CANVAS widget and invoked by `capy_widget_canvas_draw` when the
+ * host builds a frame. The callback appends ops to the caller-provided `dl`
+ * (e.g. RECT/BORDER/TEXT within `w->bounds`) to render custom content. The
+ * widget core never calls it during `capy_widget_emit`, so emit stays
+ * self-contained and deterministic. Returns `0` on success, non-zero on
+ * failure (CapyUI never interprets the value beyond zero/non-zero). The
+ * callback must be deterministic for a given `(w, dl, user_data)` to preserve
+ * the display-list determinism contract, must be read-only on `w`'s tree
+ * structure, and must not allocate through CapyUI. */
+typedef int (*capy_canvas_draw_fn)(struct capy_widget *w,
+                                   struct capy_display_list *dl,
+                                   void *user_data);
+
 struct capy_widget_allocator {
   capy_widget_alloc_fn alloc;
   capy_widget_free_fn free;
@@ -468,6 +504,32 @@ struct capy_date {
   uint16_t year;  /* 1..65535; 0 = unset */
   uint8_t month;  /* 1..12; 0 = unset */
   uint8_t day;    /* 1..31, calendar-validated; 0 = unset */
+};
+
+/* Rich-text style flags (since 2.20). Bit mask carried in
+ * `capy_text_range.flags`; combine with bitwise OR. `NONE` (0) inherits the
+ * widget's base style. New flags must append at higher bits (additive). */
+#define CAPY_TEXT_STYLE_NONE          0x0u
+#define CAPY_TEXT_STYLE_BOLD          0x1u
+#define CAPY_TEXT_STYLE_ITALIC        0x2u
+#define CAPY_TEXT_STYLE_UNDERLINE     0x4u
+#define CAPY_TEXT_STYLE_STRIKETHROUGH 0x8u
+
+/* Rich-text style range (since 2.20). A single attributed run over a
+ * RICH_TEXT widget's text: characters in the half-open interval
+ * `[start, start + length)` render with `flags` (a CAPY_TEXT_STYLE_* mask)
+ * and `color` (0xAARRGGBB; 0 = inherit the widget/theme colour). Ranges are
+ * caller-owned (see `capy_widget.rich_text_ranges`); the widget core never
+ * interprets the underlying text, so `start`/`length` are in whatever unit
+ * the host counts in (bytes or codepoints) — CapyUI only does bounds
+ * arithmetic. A zero-`length` run covers nothing. `reserved` must be 0
+ * (future use, e.g. a font_id channel). */
+struct capy_text_range {
+  uint32_t start;
+  uint32_t length;
+  uint16_t flags;
+  uint16_t reserved;
+  uint32_t color;
 };
 
 struct capy_widget {
@@ -618,6 +680,27 @@ struct capy_widget {
    * (`capy_widget_chart_range` scans the dataset for its signed min/max). */
   const int32_t *chart_values;
   uint16_t chart_count;
+  /* Rich-text style ranges (since 2.20, aditivo, tail). Valid only when
+   * `type == CAPY_WIDGET_RICH_TEXT`. `rich_text_ranges` is a caller-owned
+   * array of `rich_text_range_count` attributed runs (same caller-owned,
+   * never-copied idiom as the table widths / chart values); the pointer must
+   * outlive the widget's use. NULL/0 (create-time default) means "no styling"
+   * — the text renders in the widget's base style. Seventh advanced-widget
+   * family; the first carrying a per-offset lookup
+   * (`capy_widget_rich_text_range_at` finds the run covering a character
+   * offset, last-match-wins). */
+  const struct capy_text_range *rich_text_ranges;
+  uint16_t rich_text_range_count;
+  /* Canvas draw callback (since 2.21, aditivo, tail). Valid only when
+   * `type == CAPY_WIDGET_CANVAS`. `canvas_draw` is a caller-owned host
+   * callback (NULL = no custom drawing, the create-time default) and
+   * `canvas_user_data` is the opaque pointer handed back to it. Eighth and
+   * last advanced-widget family lifted into tail slots — the first carrying a
+   * behaviour (a callback) rather than a data model; invoked through
+   * `capy_widget_canvas_draw`, which the host calls while building a frame.
+   * The widget core never invokes it during `capy_widget_emit`. */
+  capy_canvas_draw_fn canvas_draw;
+  void *canvas_user_data;
 };
 
 struct capy_widget_context {
@@ -774,8 +857,11 @@ int32_t capy_anim_bezier_eval(int32_t p0, int32_t p1, int32_t p2, int32_t p3,
  * host-provided monotonic `now`. Only TOUCH_BEGIN/MOVE/END are acted upon;
  * other event types return `0`. Returns `1` if a gesture was queued in
  * `r->pending`, `0` if the event only updated state, `-1` on NULL args.
- * A second BEGIN with a different `touch_id` while a touch is already
- * active is ignored (multi-touch deferred to a future minor).
+ * A second BEGIN with a different `touch_id` while a touch is already active
+ * opens a two-finger session (since 2.22): subsequent MOVEs on either finger
+ * may queue PINCH_IN/OUT or ROTATE_CW/CCW (each at most once per session),
+ * the single-touch path is suppressed, and any END ends the session and
+ * resets the recognizer. A third concurrent finger is ignored.
  *
  * `capy_gesture_tick(r, now)` lets the host drive LONG_PRESS detection
  * without a new touch event. Returns `1` if LONG_PRESS was queued, `0`
@@ -2282,6 +2368,74 @@ int capy_widget_chart_value(const struct capy_widget *w, uint16_t index,
                             int32_t *out_value);
 int capy_widget_chart_range(const struct capy_widget *w, int32_t *out_min,
                             int32_t *out_max);
+
+/* Advanced widget state — rich-text ranges (since 2.20).
+ *
+ * Seventh advanced-widget family. Caller-owned array of attributed style runs
+ * (zero-alloc: the `const struct capy_text_range *` array is never
+ * copied/freed) plus a bounds-checked accessor and a per-offset lookup. Total /
+ * deterministic / zero-alloc / zero-float / fail-closed by widget type.
+ *
+ *  - `capy_widget_set_rich_text_ranges(w, ranges, count)` — stores the run
+ *    array. `count == 0` clears (ranges ignored). `count > 0` requires non-NULL
+ *    `ranges` (which must outlive the widget's use). Returns 0; -1 on NULL `w`,
+ *    `type != RICH_TEXT`, or `count > 0 && ranges == NULL` (state unchanged on
+ *    fail).
+ *  - `capy_widget_clear_rich_text_ranges(w)` — resets to NULL/0. 0; -1 NULL /
+ *    type.
+ *  - `capy_widget_rich_text_range_count(w)` — number of runs (0 when none), or
+ *    -1 on NULL / wrong type.
+ *  - `capy_widget_rich_text_range(w, index, out_range)` — copies
+ *    `ranges[index]` into `*out_range`. 0; -1 on NULL / wrong type / NULL
+ *    `out_range` / no data / `index >= count` (bounds-checked).
+ *  - `capy_widget_rich_text_range_at(w, offset, out_range)` — finds the run
+ *    covering character `offset` (half-open `[start, start + length)`;
+ *    zero-length runs cover nothing). When runs overlap, the **last** matching
+ *    run wins (later entries override earlier — standard attributed-string
+ *    layering). Returns 1 with the run written when a cover is found, 0 (and a
+ *    zeroed `*out_range`) when none covers `offset`, -1 on NULL `w` / wrong
+ *    type / NULL `out_range`. Deterministic single pass; overflow-safe. */
+int capy_widget_set_rich_text_ranges(struct capy_widget *w,
+                                     const struct capy_text_range *ranges,
+                                     uint16_t count);
+int capy_widget_clear_rich_text_ranges(struct capy_widget *w);
+int capy_widget_rich_text_range_count(const struct capy_widget *w);
+int capy_widget_rich_text_range(const struct capy_widget *w, uint16_t index,
+                                struct capy_text_range *out_range);
+int capy_widget_rich_text_range_at(const struct capy_widget *w, uint32_t offset,
+                                   struct capy_text_range *out_range);
+
+/* Advanced widget state — canvas draw callback (since 2.21).
+ *
+ * Eighth and final advanced-widget family — and the first carrying a
+ * *behaviour* (a host callback) instead of a data model, which closes the
+ * 8/8 advanced-widget state track opened in 2.1. The widget core stores the
+ * callback and never invokes it during `capy_widget_emit` (emit stays
+ * self-contained / deterministic); the host calls `capy_widget_canvas_draw`
+ * while building a frame to let the canvas append its own display-list ops.
+ * Zero-alloc / fail-closed by widget type.
+ *
+ *  - `capy_widget_set_canvas_draw(w, fn, user_data)` — stores the callback and
+ *    its opaque `user_data`. `fn == NULL` clears (user_data reset too).
+ *    Returns `0`, or `-1` on NULL `w` / `type != CANVAS`.
+ *  - `capy_widget_clear_canvas_draw(w)` — resets callback + user_data to NULL.
+ *    `0`, or `-1` on NULL / wrong type.
+ *  - `capy_widget_has_canvas_draw(w)` — `1` when a callback is set, `0` when
+ *    not, `-1` on NULL / wrong type.
+ *  - `capy_widget_canvas_user_data(w, out_user_data)` — writes the stored
+ *    user_data into `*out_user_data` (NULL when unset). `0`, or `-1` on NULL
+ *    `w` / wrong type / NULL `out_user_data`.
+ *  - `capy_widget_canvas_draw(w, dl)` — invokes the stored callback against
+ *    `dl`, forwarding the stored user_data. Returns `0` when the callback ran
+ *    and returned `0`; `-1` on NULL `w` / wrong type / NULL `dl` / no callback
+ *    set / the callback returning non-zero. Deterministic iff the callback is. */
+int capy_widget_set_canvas_draw(struct capy_widget *w, capy_canvas_draw_fn fn,
+                                void *user_data);
+int capy_widget_clear_canvas_draw(struct capy_widget *w);
+int capy_widget_has_canvas_draw(const struct capy_widget *w);
+int capy_widget_canvas_user_data(const struct capy_widget *w,
+                                 void **out_user_data);
+int capy_widget_canvas_draw(struct capy_widget *w, struct capy_display_list *dl);
 
 /* Pool allocator + measure cache (since 0.15).
  *

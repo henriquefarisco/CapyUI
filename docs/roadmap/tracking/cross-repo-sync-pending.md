@@ -12,9 +12,9 @@
 >
 > **🚨 MAJOR RELEASE v2.0.0:** primeiro **major bump** desde o freeze v1.0. **Quebra controlada conservadora**: nenhum símbolo do 1.x foi removido em 2.0.0, mas o major bump abre a porta para remoções em minors 2.x sob a `deprecation-policy.md`. **Terceiro bump de DL schema** (6 → **7**) com a op aditiva `CAPY_DL_PLUGIN_OP`. Nova superfície de plugin (`struct capy_plugin_descriptor`, `capy_plugin_register/unregister_all`, macros `CAPYUI_API_VERSION_TAG` e `CAPY_MAX_PLUGINS`). **`sizeof(capy_widget_context)` cresce** (8 pointer slots + count). **1.x permanece em LTS por ≥12 meses pós-2.0**.
 
-**Última revisão:** 2026-05-29 (após `v2.19.0` — advanced widget state: chart dataset; 6ª fatia da trilha 2.14+ de estado dos advanced widgets)
-**Tag CapyUI mais recente:** `v2.19.0` (ABI `capy-ui-widget` **2.19**, DL schema **7**)
-**Tag CapyOS pinada no contrato CapyUI:** `0.8.0-alpha.261+20260529` (ver `docs/compatibility.md`; a matriz CapyOS carrega a row-resumo `capy-ui-widget` v2.19 / display-list schema v7 desde a sincronização cross-repo de 2026-05-29)
+**Última revisão:** 2026-06-02 (após `v2.22.0` — multi-touch gestures: pinch + rotate; completa os slots PINCH/ROTATE reservados desde a 1.4)
+**Tag CapyUI mais recente:** `v2.22.0` (ABI `capy-ui-widget` **2.22**, DL schema **7**)
+**Tag CapyOS pinada no contrato CapyUI:** `0.8.0-alpha.262+20260602` (ver `docs/compatibility.md`; a matriz CapyOS carrega a row-resumo `capy-ui-widget` v2.22 / display-list schema v7 desde a sincronização cross-repo de 2026-06-02)
 
 ## Política
 
@@ -287,26 +287,89 @@ Adicionar (ou atualizar) a linha da ABI `capy-ui-widget` para refletir as três 
   |   zero-float, total. capy_widget_serialize NÃO serializa o dataset.
   |   Macros 2/19/0; CAPYUI_API_VERSION_TAG = 0x00021300.
   |   DL schema permanece 7. +8 testes (313→321). |
+
+| capy-ui-widget | **2.20** | aditivo (7ª fatia de estado dos advanced widgets) | delivered |
+  | Advanced widget state — rich-text ranges:
+  |   style flags CAPY_TEXT_STYLE_NONE/BOLD/ITALIC/UNDERLINE/STRIKETHROUGH +
+  |   struct capy_text_range (start/length/flags/reserved/color 0xAARRGGBB),
+  |   tail fields rich_text_ranges (caller-owned const struct capy_text_range*) +
+  |   rich_text_range_count em capy_widget (válido só p/ RICH_TEXT; sizeof 880→896),
+  |   5 APIs (capy_widget_set_rich_text_ranges/clear_rich_text_ranges/
+  |   rich_text_range_count/rich_text_range/rich_text_range_at).
+  |   Array caller-owned (zero-alloc, CapyUI nunca copia/aloca/libera),
+  |   acessor bounds-checked + busca por offset rich_text_range_at
+  |   (half-open [start,start+length), zero-length cobre nada, overflow-safe;
+  |   overlap = último run vence; 1 achou / 0 nenhum out-zerado / -1 erro),
+  |   zero-float, total. capy_widget_serialize NÃO serializa os runs.
+  |   Macros 2/20/0; CAPYUI_API_VERSION_TAG = 0x00021400.
+  |   DL schema permanece 7. +8 testes (321→329). |
+
+| capy-ui-widget | **2.21** | aditivo (8ª e última fatia de estado dos advanced widgets) | delivered |
+  | Advanced widget state — canvas draw callback (fecha 8/8 famílias):
+  |   typedef capy_canvas_draw_fn(w, dl, user_data) (host callback; 0 ok / não-zero falha),
+  |   tail fields canvas_draw (caller-owned host callback) + canvas_user_data
+  |   em capy_widget (válido só p/ CANVAS; sizeof 896→912),
+  |   5 APIs (capy_widget_set_canvas_draw/clear_canvas_draw/has_canvas_draw/
+  |   canvas_user_data/canvas_draw).
+  |   Primeira família com COMPORTAMENTO (callback) em vez de dados.
+  |   O core guarda mas NUNCA invoca em capy_widget_emit (emit determinístico);
+  |   o host chama capy_widget_canvas_draw ao montar o frame (idioma do
+  |   capy_text_metrics_fn / virtual_source). Fail-closed por tipo, zero-alloc.
+  |   capy_widget_serialize NÃO serializa o callback.
+  |   Macros 2/21/0; CAPYUI_API_VERSION_TAG = 0x00021500.
+  |   DL schema permanece 7. +8 testes (329→337). |
+
+| capy-ui-widget | **2.22** | aditivo (multi-touch — completa a v1.4) | delivered |
+  | Multi-touch gestures — pinch + rotate:
+  |   struct capy_gesture_recognizer ganha tail fields p/ um 2º dedo
+  |   (pinch_min_distance_px seed 20 + touch2_active/pinch_emitted/
+  |   rotate_emitted/reserved2 + touch2_id + touch2_pos + multi_v0 +
+  |   multi_start_dist). sizeof(capy_gesture_recognizer) cresce (tail aditivo).
+  |   Emite CAPY_GESTURE_PINCH_IN/OUT + ROTATE_CW/CCW (reservados desde 1.4).
+  |   Pinch = delta assinado da separação Chebyshev; rotate = sinal do produto
+  |   vetorial int64 (direção) + significância |cross|/dot > 27/100 (~15°).
+  |   Sessão de dois dedos one-shot, qualquer END reseta, 3º dedo ignorado,
+  |   single-touch suprimido durante a sessão (e inalterado fora dela).
+  |   Zero-float, zero-alloc. capy_widget_serialize inalterado.
+  |   Macros 2/22/0; CAPYUI_API_VERSION_TAG = 0x00021600.
+  |   DL schema permanece 7. +8 testes (337→345). |
 ```
 
 (Adaptar à formatação real do arquivo no momento da edição. As entradas das ABIs 1.1 e 1.2 podem já existir mas com texto pré-1.3.)
 
-> **Ação CapyOS para 2.14 + 2.15 + 2.16 + 2.17 + 2.18 + 2.19 (nenhuma mudança obrigatória de comportamento):**
-> Todas as seis ABI puramente aditivas, DL schema inalterado (7), manifest/módulos/gate
+> **Ação CapyOS para 2.14 + 2.15 + 2.16 + 2.17 + 2.18 + 2.19 + 2.20 + 2.21 (nenhuma mudança obrigatória de comportamento):**
+> Todas as oito ABI puramente aditivas, DL schema inalterado (7), manifest/módulos/gate
 > inalterados. Requer apenas: (1) bump da row-resumo `capy-ui-widget` para
-> **v2.19** na `compatibility-matrix.md`; (2) opcionalmente listar no integration
-> contract, sob "since 2.14".."2.19", os símbolos `capy_date_*`/
+> **v2.21** na `compatibility-matrix.md`; (2) opcionalmente listar no integration
+> contract, sob "since 2.14".."2.21", os símbolos `capy_date_*`/
 > `capy_widget_*_date` (2.14), `capy_color_pack`/`capy_widget_*_color` (2.15),
 > `capy_widget_*_table_columns`/`capy_widget_table_column_*` (2.16),
 > `capy_widget_*_autocomplete*`/`capy_widget_autocomplete_*` (2.17),
-> `capy_widget_*_tree_*`/`capy_widget_tree_*` (2.18) e
-> `capy_widget_*_chart_*`/`capy_widget_chart_*` (2.19);
-> (3) nova audit row `compatibility-audit-2026-05-29.md` cobrindo até `v2.19.0`.
+> `capy_widget_*_tree_*`/`capy_widget_tree_*` (2.18),
+> `capy_widget_*_chart_*`/`capy_widget_chart_*` (2.19),
+> `capy_widget_*_rich_text_range*`/`struct capy_text_range`/`CAPY_TEXT_STYLE_*` (2.20) e
+> `capy_widget_*_canvas_*`/`capy_canvas_draw_fn` (2.21);
+> (3) nova audit row `compatibility-audit-2026-06-02.md` cobrindo até `v2.21.0`.
 > `sizeof(capy_widget)` cresce de 808 (2.13) → 816 (2.14) → 824 (2.15) → 840 (2.16)
-> → 856 (2.17) → 864 (2.18) → 880 (2.19) — recompilar consumidores; nenhum realloc de
-> buffer de DL é necessário (o widget é alocado pelo allocator do host). Os modelos
-> caller-owned da 2.16 (colunas), 2.17 (sugestões) e 2.19 (dataset do gráfico) seguem a
-> posse do host; a 2.18 (fold/indent da árvore) é estado de UI interno ao widget.
+> → 856 (2.17) → 864 (2.18) → 880 (2.19) → 896 (2.20) → 912 (2.21) — recompilar
+> consumidores; nenhum realloc de buffer de DL é necessário (o widget é alocado pelo
+> allocator do host). Os modelos caller-owned da 2.16 (colunas), 2.17 (sugestões),
+> 2.19 (dataset do gráfico), 2.20 (runs de rich-text) e 2.21 (callback de canvas +
+> user_data) seguem a posse do host; a 2.18 (fold/indent da árvore) é estado de UI
+> interno ao widget. O core nunca invoca o callback de canvas em emit (host-driven via
+> `capy_widget_canvas_draw`).
+
+> **Ação CapyOS para 2.22 (multi-touch gestures; nenhuma mudança obrigatória de comportamento):**
+> Aditivo, DL schema inalterado (7), manifest/módulos/gate inalterados. **Nenhuma função
+> pública nova** — as 4 APIs `capy_gesture_*` são as mesmas desde 1.4; a mudança é (a)
+> `struct capy_gesture_recognizer` cresce no tail (callers que embedam o struct recompilam;
+> `capy_gesture_recognizer_init` continua zerando tudo) e (b) os valores de enum
+> `CAPY_GESTURE_PINCH_IN/OUT` + `ROTATE_CW/CCW` (reservados desde 1.4) **passam a ser
+> emitidos**. Hosts que já tratavam o enum inteiro não mudam; hosts que ignoravam
+> pinch/rotate continuam funcionando (gestos extras simplesmente aparecem na fila).
+> Requer apenas: (1) bump da row-resumo `capy-ui-widget` para **v2.22** na
+> `compatibility-matrix.md`; (2) audit row `compatibility-audit-2026-06-02.md` cobrindo
+> até `v2.22.0`.
 
 ### 2. `docs/reference/integration/capyui-widget-integration-contract.md`
 

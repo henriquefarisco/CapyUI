@@ -6,7 +6,7 @@ two installable Capy packages consumed by the CapyOS in-tree adapter
 `services/capypkg`:
 
 - `org.capyos.ui.widget-core` — portable retained widget model
-  (ABI `capy-ui-widget` **v2.19**, aditivo sobre 2.18; fase 2.x major completa em 14/14 (2.0–2.13), 2.14–2.19 estendem a trilha de estado dos advanced widgets (date picker + color picker + table columns + autocomplete + tree hierarchy + chart dataset); 1.x permanece em LTS ≥12m).
+  (ABI `capy-ui-widget` **v2.22**, aditivo sobre 2.21; fase 2.x major completa em 14/14 (2.0–2.13), 2.14–2.21 completam a trilha de estado dos advanced widgets (8/8), 2.22 adiciona multi-touch gestures (pinch + rotate, completando os slots reservados da 1.4); 1.x permanece em LTS ≥12m).
 - `org.capyos.ui.desktop-session` — desktop runtime, window manager
   and built-in apps (ABI `capy-ui-desktop-session` v1, depends on
   `widget-core`).
@@ -16,11 +16,11 @@ and must not call CapyOS compositor internals directly.
 
 ## CapyOS reference version
 
-- CapyOS core pinned for this contract: `0.8.0-alpha.261+20260529`.
+- CapyOS core pinned for this contract: `0.8.0-alpha.262+20260602`.
 - Authoritative cross-repo matrix: [`CapyOS/docs/reference/integration/compatibility-matrix.md`](../../CapyOS/docs/reference/integration/compatibility-matrix.md).
 - Canonical manifest format consumed by the in-tree adapter: [`CapyOS/docs/reference/integration/capypkg-publisher-manifest-format.md`](../../CapyOS/docs/reference/integration/capypkg-publisher-manifest-format.md).
 - Manual deploy runbook: [`CapyOS/docs/operations/manual-module-deploy-runbook.md`](../../CapyOS/docs/operations/manual-module-deploy-runbook.md).
-- Current cross-repo audit: [`CapyOS/docs/reference/integration/compatibility-audit-2026-05-23.md`](../../CapyOS/docs/reference/integration/compatibility-audit-2026-05-23.md).
+- Current cross-repo audit: [`CapyOS/docs/reference/integration/compatibility-audit-2026-06-02.md`](../../CapyOS/docs/reference/integration/compatibility-audit-2026-06-02.md).
 
 Authoritative CapyOS references:
 
@@ -41,10 +41,10 @@ Roadmap: see `docs/roadmap/README.md`. Current state: see `docs/roadmap/STATUS.m
 
 | ABI name | Version | Status | Module package | Adapter consumption |
 |---|---|---|---|---|
-| `capy-ui-widget` | **`v2.19` (additive over 2.18; fase 2.x major completa 14/14; advanced-widget state track open: date + color picker + table columns + autocomplete + tree hierarchy + chart dataset; 1.x em LTS ≥12m)** | Delivered | `org.capyos.ui.widget-core` | Linked statically by `org.capyos.ui.desktop-session` and any future CapyUI consumer. The 1.0 baseline (= union of pre-1.0 minors 0.0..0.15) was frozen; 1.x minors add fields/APIs without removing or renaming. Deprecation policy in `docs/roadmap/contracts/deprecation-policy.md`. |
+| `capy-ui-widget` | **`v2.22` (additive over 2.21; fase 2.x major completa 14/14; advanced-widget state track complete 8/8; multi-touch gestures (pinch + rotate) since 2.22; 1.x em LTS ≥12m)** | Delivered | `org.capyos.ui.widget-core` | Linked statically by `org.capyos.ui.desktop-session` and any future CapyUI consumer. The 1.0 baseline (= union of pre-1.0 minors 0.0..0.15) was frozen; 1.x minors add fields/APIs without removing or renaming. Deprecation policy in `docs/roadmap/contracts/deprecation-policy.md`. |
 | `capy-ui-desktop-session` | `v1` (delivered in `alpha.241`) | Delivered | `org.capyos.ui.desktop-session` | Consumed by CapyOS `kernel/module_gate.c` via marker `/var/capypkg/org.capyos.ui.desktop-session/installed`. When present, CapyOS activates desktop runtime; when absent, kernel keeps shell-only mode |
 
-### `capy-ui-widget` v2.19 covers (additive over 2.18; fase 2.x major completa 14/14; 2.14–2.19 advanced-widget state: date + color picker + table columns + autocomplete + tree hierarchy + chart dataset; 1.x em LTS ≥12m)
+### `capy-ui-widget` v2.22 covers (additive over 2.21; fase 2.x major completa 14/14; 2.14–2.21 advanced-widget state complete 8/8; 2.22 multi-touch gestures (pinch + rotate); 1.x em LTS ≥12m)
 
 - widget tree model;
 - abstract events (POINTER/KEY since 0.0; WHEEL/TOUCH/GAMEPAD since 0.10);
@@ -67,7 +67,7 @@ Roadmap: see `docs/roadmap/README.md`. Current state: see `docs/roadmap/STATUS.m
 - damage tracking (since 1.1): `dirty_version` tail field on every widget, `capy_widget_invalidate_subtree`, `capy_widget_dirty_version`, `capy_widget_frame_budget`, `capy_display_list_diff_incremental` (positional diff with leading-prefix short-circuit);
 - optional GPU translator (since 1.2): new header `capy_dl_gpu.h` + source `capy_dl_gpu.c`, `struct capy_gpu_quad`, `capy_dl_to_quads(dl, out, cap, out_count)` decomposes a `capy_display_list` into axis-aligned coloured/textured quads with an internal scissor stack (max depth `CAPY_DL_GPU_CLIP_STACK_MAX = 16`). DL schema remains 4;
 - rich animation (since 1.3): `struct capy_anim_keyframe` + `struct capy_anim_track` (loop policy: 0=once, -1=infinite, N>0=repeat-then-clamp), `struct capy_spring` (Q8.8 stiffness/damping, Q24.8 velocity, plain-units position/target), `capy_anim_track_sample(track, now, &out)`, `capy_spring_step(s, dt_ms)` (1 ms symplectic-Euler substeps), `capy_anim_bezier_eval(p0, p1, p2, p3, t_q16)` (1D cubic via de Casteljau in Q16.16). Zero float; all signed shifts replaced by `/` and `*` to stay strictly-defined under C11;
-- gesture engine (since 1.4): single-touch deterministic recognizer over the v0.10 TOUCH plumbing. Public surface: `enum capy_gesture_kind` (13 values including reserved PINCH_IN/OUT and ROTATE_CW/CCW), `struct capy_gesture`, `struct capy_gesture_recognizer` (caller-embedded, no malloc, depth-1 output queue), and 4 APIs `capy_gesture_recognizer_init`, `capy_gesture_feed(r, ev, now)`, `capy_gesture_tick(r, now)`, `capy_gesture_poll(r, &out)`. Recognizes TAP, DOUBLE_TAP, LONG_PRESS, SWIPE_LEFT/RIGHT/UP/DOWN, DRAG. Multi-touch (PINCH/ROTATE) deferred to a future minor; enum values reserved so future detection is ABI-compatible;
+- gesture engine (single-touch since 1.4; multi-touch since 2.22): deterministic recognizer over the v0.10 TOUCH plumbing. Public surface: `enum capy_gesture_kind` (13 values), `struct capy_gesture`, `struct capy_gesture_recognizer` (caller-embedded, no malloc, depth-1 output queue), and 4 APIs `capy_gesture_recognizer_init`, `capy_gesture_feed(r, ev, now)`, `capy_gesture_tick(r, now)`, `capy_gesture_poll(r, &out)`. Recognizes TAP, DOUBLE_TAP, LONG_PRESS, SWIPE_LEFT/RIGHT/UP/DOWN, DRAG (single-touch). **Since 2.22** the recognizer tracks a second finger (tail fields `pinch_min_distance_px`/`touch2_*`/`multi_v0`/`multi_start_dist`) and emits the previously-reserved `PINCH_IN`/`PINCH_OUT`/`ROTATE_CW`/`ROTATE_CCW`: pinch from the signed Chebyshev-separation delta, rotate direction from the integer cross-product sign with a scale-independent significance test (`|cross|/dot > 27/100`, ≈15°). A two-finger session opens on the 2nd distinct `TOUCH_BEGIN`, each of pinch/rotate fires at most once per session, any `TOUCH_END` resets, a 3rd finger is ignored, and the single-touch path is suppressed while a session is active. All integer-only (cross product in `int64_t`), no float;
 - multi-display + DPI scaling (since 1.5): `dpi_scale_x256` tail field on `capy_widget_context` and on `capy_display_list` (Q8.8, default `256` = 1.0×); APIs `capy_widget_set_dpi_scale`, `capy_widget_get_dpi_scale`, `capy_widget_dpi_scale_dim` (pure integer helper, saturating clamps to `INT32_MAX/MIN`). New display-list op `CAPY_DL_DPI_SCOPE` (DL schema **4 → 5**) prepended once by `capy_widget_emit` when `dl->dpi_scale_x256 != 256`; carries the scale on `image_id` and the scoped region on `rect`. Layout `measure`/`arrange` is **not** auto-scaled in 1.5 to preserve byte-equivalent output for pre-1.5 callers; auto-scale is reserved for a future additive minor;
 - drag and drop (since 1.6): 4 new abstract event types (`DRAG_BEGIN`/`DRAG_MOVE`/`DRAG_END`/`DROP`), `struct capy_dnd_payload` (`type[32]` + caller-owned `data` ptr + `len`); 5 widget tail fields (`drag_payload`, `drop_accepted_types`/`drop_types_count`, `on_drop`, `drop_user_data`); APIs `capy_widget_set_draggable`, `capy_widget_set_drop_target`, `capy_widget_set_on_drop`; matchers `capy_dnd_type_matches` (case-insensitive `*` / `prefix/*` / exact) and `capy_widget_dnd_accepts`. DROP routed deepest-first in `capy_widget_handle_event`; DRAG_BEGIN/MOVE/END are no-ops in core (host dispatcher owns the preview/cancel cycle). DL schema unchanged;
 - slab allocator (since 1.7): `struct capy_slab` over a caller-provided byte buffer, zero malloc, deterministic LIFO reuse via free-list inline in freed slots; APIs `capy_slab_init(s, buf, size, element_size)`, `capy_slab_alloc(s)`, `capy_slab_free(s, ptr)`. Companion to `capy_widget_pool` (since 0.15): pool for monotonically-growing arenas, slab for tight loops with frequent free+reuse. Degenerate inits (`element_size < sizeof(void *)`, NULL buffer or zero size) fail-closed — every subsequent `_alloc` returns `NULL`. Display-list compression and hash measure-cache (also listed in the slice plan) are reserved for a future additive minor; existing `capy_widget_diff` / `capy_display_list_diff_incremental` / `layout_dirty` already cover most of the use cases;
@@ -197,6 +197,34 @@ leaks raw pointers across the host ABI.
 - `capy_widget_tick(root, now)` walks the tree deterministically. In 0.5 it performs no per-widget mutation; future slices will hook per-widget animations into the walk.
 - Determinism guarantee: identical `(struct capy_anim, now)` inputs produce identical `int32_t` outputs across runs and platforms (no platform-dependent float rounding).
 - Easings are monotonic in `[from, to]` (or `[to, from]`) and hit exact endpoints when `now == start_tick` and `now == start_tick + duration`.
+
+## Advanced widget state — canvas draw callback (since 2.21)
+
+- Eighth and **final** advanced-widget family — closes the 8/8 state track opened in 2.1 — and the first carrying a **behaviour** (a host callback) instead of a data model. The widget core stores the callback and never invokes it during `capy_widget_emit` (emit stays self-contained / deterministic); the host calls `capy_widget_canvas_draw` while building a frame so the canvas can append its own display-list ops. Total / deterministic (iff the callback is) / zero-alloc / fail-closed by widget type.
+- `typedef int (*capy_canvas_draw_fn)(struct capy_widget *w, struct capy_display_list *dl, void *user_data)` — returns `0` on success, non-zero on failure (CapyUI only checks zero/non-zero). The callback appends ops to `dl` within `w->bounds`.
+- Tail fields on `capy_widget`, meaningful only when `type == CAPY_WIDGET_CANVAS`: `capy_canvas_draw_fn canvas_draw` (caller-owned host callback; NULL = no custom drawing) + `void *canvas_user_data`. `sizeof(struct capy_widget)` grows 896 → 912 bytes.
+- 5 APIs:
+  - `int capy_widget_set_canvas_draw(w, fn, user_data)` — stores the callback + user_data. `fn == NULL` clears (user_data reset). Returns `0`, or `-1` on NULL `w` / `type != CANVAS`.
+  - `int capy_widget_clear_canvas_draw(w)` — resets callback + user_data to NULL; `0`, or `-1` on NULL / wrong type.
+  - `int capy_widget_has_canvas_draw(w)` — `1` when set, `0` when not, `-1` on NULL / wrong type.
+  - `int capy_widget_canvas_user_data(w, out_user_data)` — writes the stored user_data (NULL when unset); `0`, or `-1` on NULL `w` / wrong type / NULL `out_user_data`.
+  - `int capy_widget_canvas_draw(w, dl)` — invokes the callback with `dl` + stored user_data. Returns `0` when it ran and returned `0`; `-1` on NULL `w` / wrong type / NULL `dl` / no callback set / non-zero callback result.
+- DL schema unchanged (`7`). `capy_widget_serialize` (1.10) does not serialize the callback (host-owned behaviour). The core never calls it during emit, preserving display-list determinism.
+- **Closes the advanced-widget state track (8/8 families: date, color, table, autocomplete, tree, chart, rich-text, canvas).** Deferred: a dedicated `CAPY_DL_CANVAS` op / retained canvas command buffer, and the desktop-session canvas-app UX.
+
+## Advanced widget state — rich-text ranges (since 2.20)
+
+- Seventh "advanced widget" family lifted into tail fields. Like the table/chart it stores a **caller-owned** array (zero-alloc: the `const struct capy_text_range *` runs are never copied/freed), and it adds the **first per-offset lookup**: `capy_widget_rich_text_range_at` walks the runs and returns the one covering a character offset. Total / deterministic / zero-alloc / zero-float / fail-closed by widget type.
+- `struct capy_text_range` (an attributed run): `uint32_t start` + `uint32_t length` (half-open `[start, start + length)` in whatever unit the host counts — bytes or codepoints; CapyUI only does bounds arithmetic) + `uint16_t flags` (`CAPY_TEXT_STYLE_*` bitmask: `NONE`/`BOLD`/`ITALIC`/`UNDERLINE`/`STRIKETHROUGH`) + `uint16_t reserved` (must be 0) + `uint32_t color` (0xAARRGGBB; 0 = inherit). A zero-`length` run covers nothing.
+- Tail fields on `capy_widget`, meaningful only when `type == CAPY_WIDGET_RICH_TEXT`: `const struct capy_text_range *rich_text_ranges` (caller-owned runs, must outlive the widget's use; NULL = no styling) + `uint16_t rich_text_range_count` (0 = no styling). `sizeof(struct capy_widget)` grows 880 → 896 bytes.
+- 5 APIs:
+  - `int capy_widget_set_rich_text_ranges(w, ranges, count)` — stores the run array. `count == 0` clears (ranges ignored). `count > 0` requires non-NULL `ranges`. Returns `0`, or `-1` on NULL `w` / `type != RICH_TEXT` / (`count > 0 && ranges == NULL`). Fail-closed: stored runs unchanged on failure.
+  - `int capy_widget_clear_rich_text_ranges(w)` — resets to NULL/0; `0`, or `-1` on NULL / wrong type.
+  - `int capy_widget_rich_text_range_count(w)` — number of runs (0 when none), or `-1` on NULL / wrong type.
+  - `int capy_widget_rich_text_range(w, index, out_range)` — copies `ranges[index]` into `*out_range`; `0`, or `-1` on NULL `w` / wrong type / NULL `out_range` / no data / `index >= count`.
+  - `int capy_widget_rich_text_range_at(w, offset, out_range)` — finds the run covering `offset` (half-open, overflow-safe; zero-length runs cover nothing; on overlap the **last** matching run wins — standard attributed-string layering). Returns `1` with the run written when covered, `0` (and a zeroed `*out_range`) when none covers `offset`, `-1` on NULL `w` / wrong type / NULL `out_range`.
+- DL schema unchanged (`7`). `capy_widget_serialize` (1.10) does not serialize the runs (caller-owned pointer; styling is ephemeral host state).
+- Deferred: nested/stacked attribute resolution in core, paragraph/block attributes, embedded objects, display-list emission of styled runs (desktop-session UX); the `CANVAS` draw-callback family (last of the eight advanced widgets).
 
 ## Advanced widget state — chart dataset (since 2.19)
 

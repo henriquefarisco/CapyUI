@@ -2528,6 +2528,41 @@ static void capy_gesture_queue(struct capy_gesture_recognizer *r,
   r->has_pending = 1u;
 }
 
+/* Multi-touch (since 2.22): evaluate pinch/rotate from the two tracked finger
+ * positions and queue at most one gesture (one-shot per session). Integer-only:
+ * pinch uses the signed Chebyshev-separation delta vs the baseline; rotate uses
+ * the sign of the integer cross product of the baseline vs current finger
+ * vector, gated by a scale-independent significance test
+ * (|cross| / dot > tan(~15 deg) == 27/100; dot <= 0 means >= 90 deg). */
+static void capy_gesture_eval_multi(struct capy_gesture_recognizer *r) {
+  int32_t cur_dist =
+      (int32_t)capy_gesture_chebyshev(&r->last_pos, &r->touch2_pos);
+  if (!r->pinch_emitted) {
+    int32_t delta = cur_dist - r->multi_start_dist;
+    int32_t adelta = delta < 0 ? -delta : delta;
+    if ((uint32_t)adelta >= r->pinch_min_distance_px) {
+      uint8_t kind = (delta > 0) ? (uint8_t)CAPY_GESTURE_PINCH_OUT
+                                 : (uint8_t)CAPY_GESTURE_PINCH_IN;
+      capy_gesture_queue(r, kind, &r->last_pos, &r->touch2_pos, delta, 0u);
+      r->pinch_emitted = 1u;
+      return; /* one gesture per move; rotate gets a later move */
+    }
+  }
+  if (!r->rotate_emitted) {
+    int32_t vx = r->last_pos.x - r->touch2_pos.x;
+    int32_t vy = r->last_pos.y - r->touch2_pos.y;
+    int64_t cross = (int64_t)r->multi_v0.x * vy - (int64_t)r->multi_v0.y * vx;
+    int64_t dot = (int64_t)r->multi_v0.x * vx + (int64_t)r->multi_v0.y * vy;
+    int64_t acrossv = (cross < 0) ? -cross : cross;
+    if (cross != 0 && (dot <= 0 || acrossv * 100 > dot * 27)) {
+      uint8_t kind = (cross > 0) ? (uint8_t)CAPY_GESTURE_ROTATE_CW
+                                 : (uint8_t)CAPY_GESTURE_ROTATE_CCW;
+      capy_gesture_queue(r, kind, &r->last_pos, &r->touch2_pos, 0, 0u);
+      r->rotate_emitted = 1u;
+    }
+  }
+}
+
 void capy_gesture_recognizer_init(struct capy_gesture_recognizer *r) {
   if (!r) {
     return;
@@ -2564,6 +2599,18 @@ void capy_gesture_recognizer_init(struct capy_gesture_recognizer *r) {
   r->pending.end.y = 0;
   r->pending.magnitude = 0;
   r->pending.duration_ms = 0u;
+  /* Multi-touch state (since 2.22). */
+  r->pinch_min_distance_px = 20u;
+  r->touch2_active = 0u;
+  r->pinch_emitted = 0u;
+  r->rotate_emitted = 0u;
+  r->reserved2 = 0u;
+  r->touch2_id = 0u;
+  r->touch2_pos.x = 0;
+  r->touch2_pos.y = 0;
+  r->multi_v0.x = 0;
+  r->multi_v0.y = 0;
+  r->multi_start_dist = 0;
 }
 
 int capy_gesture_feed(struct capy_gesture_recognizer *r,
@@ -2581,9 +2628,21 @@ int capy_gesture_feed(struct capy_gesture_recognizer *r,
         return 0;
       }
       if (r->active) {
-        /* Second concurrent touch with a different id: ignore. Multi-touch
-         * (pinch/rotate) is deferred to a future minor; ignoring keeps the
-         * state machine intact instead of cancelling the first touch. */
+        /* A second distinct finger opens a two-finger session (since 2.22):
+         * capture the baseline separation (Chebyshev) and vector (touch1 -
+         * touch2) for pinch/rotate detection. A third concurrent finger, or a
+         * repeat of an already-tracked id, is ignored. */
+        if (!r->touch2_active && t->touch_id != r->touch_id) {
+          r->touch2_active = 1u;
+          r->touch2_id = t->touch_id;
+          r->touch2_pos = t->pos;
+          r->multi_v0.x = r->last_pos.x - t->pos.x;
+          r->multi_v0.y = r->last_pos.y - t->pos.y;
+          r->multi_start_dist =
+              (int32_t)capy_gesture_chebyshev(&r->last_pos, &t->pos);
+          r->pinch_emitted = 0u;
+          r->rotate_emitted = 0u;
+        }
         return 0;
       }
       r->active = 1u;
@@ -2596,7 +2655,24 @@ int capy_gesture_feed(struct capy_gesture_recognizer *r,
       return 0;
     case CAPY_WIDGET_EVENT_TOUCH_MOVE:
       t = (const struct capy_touch_payload *)ev->payload;
-      if (!t || !r->active || t->touch_id != r->touch_id) {
+      if (!t) {
+        return 0;
+      }
+      if (r->touch2_active) {
+        /* Two-finger session (since 2.22): update whichever finger moved, then
+         * re-evaluate pinch/rotate. Unknown ids are ignored. The single-touch
+         * tap/swipe/drag path below is suppressed while a session is active. */
+        if (t->touch_id == r->touch_id) {
+          r->last_pos = t->pos;
+        } else if (t->touch_id == r->touch2_id) {
+          r->touch2_pos = t->pos;
+        } else {
+          return 0;
+        }
+        capy_gesture_eval_multi(r);
+        return (r->has_pending && !emitted_before) ? 1 : 0;
+      }
+      if (!r->active || t->touch_id != r->touch_id) {
         return 0;
       }
       r->last_pos = t->pos;
@@ -2616,6 +2692,25 @@ int capy_gesture_feed(struct capy_gesture_recognizer *r,
       return (r->has_pending && !emitted_before) ? 1 : 0;
     case CAPY_WIDGET_EVENT_TOUCH_END:
       t = (const struct capy_touch_payload *)ev->payload;
+      if (r->touch2_active) {
+        /* Either finger lifting ends the two-finger session (since 2.22):
+         * full reset, no emit. The still-down finger is ignored until it also
+         * lifts (its later events find an inactive recognizer). An unrelated
+         * id is ignored. */
+        if (t && t->touch_id != r->touch_id && t->touch_id != r->touch2_id) {
+          return 0;
+        }
+        r->active = 0u;
+        r->touch2_active = 0u;
+        r->long_press_emitted = 0u;
+        r->drag_emitted = 0u;
+        r->pinch_emitted = 0u;
+        r->rotate_emitted = 0u;
+        r->touch_id = 0u;
+        r->touch2_id = 0u;
+        r->has_last_tap = 0u; /* a two-finger session never seeds a tap chain */
+        return 0;
+      }
       if (!r->active) {
         return 0;
       }
@@ -4323,4 +4418,135 @@ int capy_widget_chart_range(const struct capy_widget *w, int32_t *out_min,
   *out_min = min;
   *out_max = max;
   return 1;
+}
+
+/* ── v2.20: advanced widget state — rich-text ranges ───────────────────── */
+
+int capy_widget_set_rich_text_ranges(struct capy_widget *w,
+                                     const struct capy_text_range *ranges,
+                                     uint16_t count) {
+  if (!w || w->type != CAPY_WIDGET_RICH_TEXT) {
+    return -1;
+  }
+  if (count == 0u) {
+    w->rich_text_ranges = 0;
+    w->rich_text_range_count = 0u;
+    return 0;
+  }
+  if (!ranges) {
+    return -1; /* fail-closed: count > 0 needs a real array; state unchanged */
+  }
+  w->rich_text_ranges = ranges;
+  w->rich_text_range_count = count;
+  return 0;
+}
+
+int capy_widget_clear_rich_text_ranges(struct capy_widget *w) {
+  if (!w || w->type != CAPY_WIDGET_RICH_TEXT) {
+    return -1;
+  }
+  w->rich_text_ranges = 0;
+  w->rich_text_range_count = 0u;
+  return 0;
+}
+
+int capy_widget_rich_text_range_count(const struct capy_widget *w) {
+  if (!w || w->type != CAPY_WIDGET_RICH_TEXT) {
+    return -1;
+  }
+  return (int)w->rich_text_range_count;
+}
+
+int capy_widget_rich_text_range(const struct capy_widget *w, uint16_t index,
+                                struct capy_text_range *out_range) {
+  if (!w || w->type != CAPY_WIDGET_RICH_TEXT || !out_range) {
+    return -1;
+  }
+  if (!w->rich_text_ranges || index >= w->rich_text_range_count) {
+    return -1; /* no data / out-of-range index — fail-closed */
+  }
+  *out_range = w->rich_text_ranges[index];
+  return 0;
+}
+
+int capy_widget_rich_text_range_at(const struct capy_widget *w, uint32_t offset,
+                                   struct capy_text_range *out_range) {
+  uint16_t i;
+  int found = 0;
+  if (!w || w->type != CAPY_WIDGET_RICH_TEXT || !out_range) {
+    return -1;
+  }
+  out_range->start = 0u;
+  out_range->length = 0u;
+  out_range->flags = 0u;
+  out_range->reserved = 0u;
+  out_range->color = 0u;
+  if (!w->rich_text_ranges || w->rich_text_range_count == 0u) {
+    return 0; /* no ranges */
+  }
+  for (i = 0u; i < w->rich_text_range_count; ++i) {
+    const struct capy_text_range *r = &w->rich_text_ranges[i];
+    /* Covers `offset` on the half-open interval [start, start + length).
+     * Guard with `offset >= start` first, then subtract to compare against
+     * length — overflow-safe (no `start + length` that could wrap uint32).
+     * Zero-length runs cover nothing. Last covering run wins. */
+    if (r->length != 0u && offset >= r->start &&
+        (offset - r->start) < r->length) {
+      *out_range = *r;
+      found = 1;
+    }
+  }
+  return found ? 1 : 0;
+}
+
+/* ── v2.21: advanced widget state — canvas draw callback ───────────────── */
+
+int capy_widget_set_canvas_draw(struct capy_widget *w, capy_canvas_draw_fn fn,
+                                void *user_data) {
+  if (!w || w->type != CAPY_WIDGET_CANVAS) {
+    return -1;
+  }
+  if (!fn) {
+    w->canvas_draw = 0;
+    w->canvas_user_data = 0;
+    return 0; /* NULL fn clears (user_data ignored) */
+  }
+  w->canvas_draw = fn;
+  w->canvas_user_data = user_data;
+  return 0;
+}
+
+int capy_widget_clear_canvas_draw(struct capy_widget *w) {
+  if (!w || w->type != CAPY_WIDGET_CANVAS) {
+    return -1;
+  }
+  w->canvas_draw = 0;
+  w->canvas_user_data = 0;
+  return 0;
+}
+
+int capy_widget_has_canvas_draw(const struct capy_widget *w) {
+  if (!w || w->type != CAPY_WIDGET_CANVAS) {
+    return -1;
+  }
+  return w->canvas_draw ? 1 : 0;
+}
+
+int capy_widget_canvas_user_data(const struct capy_widget *w,
+                                 void **out_user_data) {
+  if (!w || w->type != CAPY_WIDGET_CANVAS || !out_user_data) {
+    return -1;
+  }
+  *out_user_data = w->canvas_user_data;
+  return 0;
+}
+
+int capy_widget_canvas_draw(struct capy_widget *w,
+                            struct capy_display_list *dl) {
+  if (!w || w->type != CAPY_WIDGET_CANVAS || !dl || !w->canvas_draw) {
+    return -1; /* fail-closed: nothing to draw, or bad args */
+  }
+  /* Forward to the caller-owned callback; normalise its result to 0/-1.
+   * CapyUI never inspects the dl contents the callback produced. */
+  return w->canvas_draw(w, dl, w->canvas_user_data) == 0 ? 0 : -1;
 }

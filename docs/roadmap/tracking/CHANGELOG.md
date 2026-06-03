@@ -2,6 +2,77 @@
 
 Mudanças por release tag, da mais recente para a mais antiga. Cada entrada é imutável após release.
 
+## [2.22.0] — 2026-06-02
+
+**Marco:** **multi-touch gestures** — completa os 4 slots `PINCH_IN/OUT` + `ROTATE_CW/CCW` reservados desde a v1.4 (gesture engine). Primeira fatia fora da trilha de _advanced-widget state_ (que fechou 8/8 na 2.21); retoma o backlog aditivo deferido. O recognizer agora rastreia um segundo dedo e emite pinch/rotate. Integer-only (zero-float): pinch = delta assinado da separação Chebyshev; rotate = sinal do produto vetorial inteiro (direção) + significância escala-independente `|cross|/dot > 27/100` (~15°). Aditivo sobre 2.21; DL schema permanece `7`.
+
+### Adicionado
+
+- Macros: `CAPYUI_API_VERSION_MAJOR/_MINOR/_PATCH` agora `2/22/0`. `CAPYUI_API_VERSION_TAG = 0x00021600`.
+- Tail fields multi-touch em `struct capy_gesture_recognizer`: `pinch_min_distance_px` (caller-tunable, seed 20) + `touch2_active`/`pinch_emitted`/`rotate_emitted`/`reserved2` + `touch2_id` + `touch2_pos` + `multi_v0` (vetor baseline touch1−touch2) + `multi_start_dist` (separação Chebyshev baseline). `sizeof(capy_gesture_recognizer)` cresce (tail aditivo) — recompilar callers que embedam o struct.
+- `CAPY_GESTURE_PINCH_IN`/`PINCH_OUT`/`ROTATE_CW`/`ROTATE_CCW` (reservados no enum desde 1.4) **agora emitidos**.
+- `capy_gesture_recognizer_init` seeds os novos campos. `capy_gesture_feed`: um 2º `TOUCH_BEGIN` com id distinto abre uma sessão de dois dedos (captura baseline); `TOUCH_MOVE` em qualquer dedo reavalia pinch/rotate (cada um **one-shot por sessão**, como `drag_emitted`); qualquer `TOUCH_END` encerra a sessão e reseta o recognizer; um 3º dedo concorrente é ignorado; o path single-touch fica suprimido durante a sessão.
+- Helper estático `capy_gesture_eval_multi` (`src/widget/capy_widget.c`).
+- 8 testes (`test_gesture_pinch_out`/`pinch_in`/`rotate_cw`/`rotate_ccw`/`rotate_below_threshold`/`multi_touch_end_resets`/`single_touch_swipe_regression`/`third_finger_ignored`). Suíte 337 → **345**.
+
+### Compatibilidade
+
+- 100% aditivo. Single-touch (tap/double-tap/long-press/swipe/drag) inalterado — regressão coberta por teste. Zero-float (produto vetorial em `int64_t`, sem overflow para coords de tela). DL schema permanece `7`. `capy_widget_serialize` inalterado.
+
+### Validação (externa, não executada nesta máquina)
+
+- Recomendado: `make validate` (lint + security + check-decoupling + 345 testes + version-check) e `make package`.
+
+## [2.21.0] — 2026-06-02
+
+**Marco:** **oitava e última fatia da trilha de estado dos advanced widgets** (após date 2.14, color 2.15, table 2.16, autocomplete 2.17, tree 2.18, chart 2.19, rich-text 2.20) — **fecha 8/8 famílias**. Levanta o `CANVAS`: a **primeira família que carrega um comportamento** (callback do host) em vez de um modelo de dados. O core guarda o callback e **nunca** o invoca em `capy_widget_emit` (emit continua self-contained/determinístico); o host chama `capy_widget_canvas_draw` ao montar um frame para o canvas anexar seus próprios ops de display-list. Aditivo sobre 2.20; DL schema permanece `7`.
+
+### Adicionado
+
+- Macros: `CAPYUI_API_VERSION_MAJOR/_MINOR/_PATCH` agora `2/21/0`. `CAPYUI_API_VERSION_TAG = 0x00021500`.
+- Typedef `capy_canvas_draw_fn(struct capy_widget *w, struct capy_display_list *dl, void *user_data)` (callback do host; retorna 0 = ok / não-zero = falha).
+- Tail fields em `struct capy_widget` (válidos só p/ `CAPY_WIDGET_CANVAS`): `capy_canvas_draw_fn canvas_draw` (NULL = sem desenho) + `void *canvas_user_data`. `sizeof` 896 → 912.
+- 5 APIs em `src/widget/capy_widget.c`:
+  - `int capy_widget_set_canvas_draw(w, fn, user_data)` — guarda callback + user_data; `fn==NULL` limpa; fail-closed por tipo.
+  - `int capy_widget_clear_canvas_draw(w)` — reseta callback + user_data a NULL.
+  - `int capy_widget_has_canvas_draw(w)` — 1 set / 0 unset / -1 NULL/tipo.
+  - `int capy_widget_canvas_user_data(w, out_user_data)` — escreve o user_data (NULL se unset); 0 / -1 erro.
+  - `int capy_widget_canvas_draw(w, dl)` — invoca o callback com `dl` + user_data; 0 se rodou e retornou 0; -1 em NULL/tipo/`dl` NULL/sem callback/retorno não-zero.
+- 8 testes (`test_canvas_*`) em `tests/test_widget_contracts.c`. Suíte 329 → **337**.
+
+### Compatibilidade
+
+- 100% aditivo. Callback e user_data caller-owned: CapyUI nunca aloca/invoca em emit (determinismo preservado; o host controla a invocação). `capy_widget_serialize` (1.10) não serializa o callback. DL schema permanece `7`. **Trilha de estado dos advanced widgets COMPLETA (8/8 famílias: tree/table/rich-text/canvas/chart/color/date/autocomplete).**
+
+### Validação (externa, não executada nesta máquina)
+
+- Recomendado: `make validate` (lint + security + check-decoupling + 337 testes + version-check) e `make package`.
+
+## [2.20.0] — 2026-06-02
+
+**Marco:** sétima fatia da trilha de **estado dos advanced widgets** (após date 2.14, color 2.15, table 2.16, autocomplete 2.17, tree 2.18, chart 2.19). Levanta o `RICH_TEXT`: array caller-owned de runs estilizados (`capy_text_range`) + a **primeira busca por offset** (`rich_text_range_at` acha o run que cobre um caractere; em overlap, o último run vence). Aditivo sobre 2.19; DL schema permanece `7`.
+
+### Adicionado
+
+- Macros: `CAPYUI_API_VERSION_MAJOR/_MINOR/_PATCH` agora `2/20/0`. `CAPYUI_API_VERSION_TAG = 0x00021400`.
+- Style flags bitmask `CAPY_TEXT_STYLE_NONE/BOLD/ITALIC/UNDERLINE/STRIKETHROUGH` + `struct capy_text_range` (`start`/`length`/`flags`/`reserved`/`color` 0xAARRGGBB).
+- Tail fields em `struct capy_widget` (válidos só p/ `CAPY_WIDGET_RICH_TEXT`): `const struct capy_text_range *rich_text_ranges` (caller-owned; NULL = sem estilo) + `uint16_t rich_text_range_count`. `sizeof` 880 → 896.
+- 5 APIs em `src/widget/capy_widget.c`:
+  - `int capy_widget_set_rich_text_ranges(w, ranges, count)` — `count==0` limpa; `count>0` exige `ranges!=NULL`; fail-closed.
+  - `int capy_widget_clear_rich_text_ranges(w)` — volta a NULL/0.
+  - `int capy_widget_rich_text_range_count(w)` — nº de runs (0 quando nenhum); `-1` em NULL/tipo.
+  - `int capy_widget_rich_text_range(w, index, out_range)` — bounds-checked; `-1` em `index >= count` / sem dados / NULL.
+  - `int capy_widget_rich_text_range_at(w, offset, out_range)` — run que cobre `offset` (`[start, start+length)`, zero-length cobre nada; overflow-safe); overlap = último run vence; 1 achou / 0 nenhum (out zerado) / -1 erro.
+- 8 testes (`test_rich_text_*`) em `tests/test_widget_contracts.c`. Suíte 321 → **329**.
+
+### Compatibilidade
+
+- 100% aditivo. Array caller-owned: CapyUI nunca copia/aloca/libera (zero-alloc). `capy_widget_serialize` (1.10) não serializa os runs (estilo é caller-owned). DL schema permanece `7`.
+
+### Validação (externa, não executada nesta máquina)
+
+- Recomendado: `make validate` (lint + security + check-decoupling + 329 testes + version-check) e `make package`.
+
 ## [2.19.0] — 2026-05-29
 
 **Marco:** sexta fatia da trilha de **estado dos advanced widgets** (após date 2.14, color 2.15, table 2.16, autocomplete 2.17, tree 2.18). Levanta o `CHART`: array caller-owned de pontos `int32` + a **primeira redução numérica** (`chart_range` faz scan single-pass do min/max assinado). Aditivo sobre 2.18; DL schema permanece `7`.

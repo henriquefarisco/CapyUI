@@ -8073,6 +8073,543 @@ static void test_chart_null_guards(void) {
   capy_widget_destroy(chart);
 }
 
+/* ── v2.20: advanced widget state — rich-text ranges (since 2.20.0) ──────── */
+
+static void test_rich_text_set_and_query(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *rt;
+  const struct capy_text_range ranges[3] = {
+      {0u, 5u, CAPY_TEXT_STYLE_BOLD, 0u, 0xFFFF0000u},
+      {5u, 3u, CAPY_TEXT_STYLE_ITALIC, 0u, 0u},
+      {8u, 4u, CAPY_TEXT_STYLE_UNDERLINE | CAPY_TEXT_STYLE_BOLD, 0u, 0xFF00FF00u}};
+  struct capy_text_range got;
+  capy_widget_context_init(&ctx, &allocator);
+  rt = capy_widget_create(&ctx, CAPY_WIDGET_RICH_TEXT);
+  EXPECT(rt != 0);
+  EXPECT(capy_widget_set_rich_text_ranges(rt, ranges, 3u) == 0);
+  EXPECT(capy_widget_rich_text_range_count(rt) == 3);
+  EXPECT(capy_widget_rich_text_range(rt, 0u, &got) == 0 && got.start == 0u &&
+         got.length == 5u && got.flags == CAPY_TEXT_STYLE_BOLD &&
+         got.color == 0xFFFF0000u);
+  EXPECT(capy_widget_rich_text_range(rt, 2u, &got) == 0 && got.start == 8u &&
+         got.length == 4u &&
+         got.flags == (CAPY_TEXT_STYLE_UNDERLINE | CAPY_TEXT_STYLE_BOLD));
+  capy_widget_destroy(rt);
+}
+
+static void test_rich_text_range_out_of_range(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *rt;
+  const struct capy_text_range ranges[2] = {
+      {0u, 4u, CAPY_TEXT_STYLE_BOLD, 0u, 0u},
+      {4u, 4u, CAPY_TEXT_STYLE_ITALIC, 0u, 0u}};
+  struct capy_text_range got;
+  capy_widget_context_init(&ctx, &allocator);
+  rt = capy_widget_create(&ctx, CAPY_WIDGET_RICH_TEXT);
+  EXPECT(rt != 0);
+  EXPECT(capy_widget_rich_text_range(rt, 0u, &got) == -1); /* no data yet */
+  EXPECT(capy_widget_set_rich_text_ranges(rt, ranges, 2u) == 0);
+  EXPECT(capy_widget_rich_text_range(rt, 2u, &got) == -1); /* index == count */
+  EXPECT(capy_widget_rich_text_range(rt, 99u, &got) == -1);
+  capy_widget_destroy(rt);
+}
+
+static void test_rich_text_set_zero_count_clears(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *rt;
+  const struct capy_text_range ranges[2] = {
+      {0u, 3u, CAPY_TEXT_STYLE_BOLD, 0u, 0u},
+      {3u, 3u, CAPY_TEXT_STYLE_ITALIC, 0u, 0u}};
+  struct capy_text_range got;
+  capy_widget_context_init(&ctx, &allocator);
+  rt = capy_widget_create(&ctx, CAPY_WIDGET_RICH_TEXT);
+  EXPECT(rt != 0);
+  EXPECT(capy_widget_set_rich_text_ranges(rt, ranges, 2u) == 0);
+  EXPECT(capy_widget_rich_text_range_count(rt) == 2);
+  /* count 0 clears even when a (ignored) pointer is passed */
+  EXPECT(capy_widget_set_rich_text_ranges(rt, ranges, 0u) == 0);
+  EXPECT(capy_widget_rich_text_range_count(rt) == 0);
+  EXPECT(capy_widget_rich_text_range(rt, 0u, &got) == -1);
+  capy_widget_destroy(rt);
+}
+
+static void test_rich_text_set_null_ranges_rejected(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *rt;
+  const struct capy_text_range ranges[1] = {{0u, 2u, CAPY_TEXT_STYLE_BOLD, 0u, 0u}};
+  capy_widget_context_init(&ctx, &allocator);
+  rt = capy_widget_create(&ctx, CAPY_WIDGET_RICH_TEXT);
+  EXPECT(rt != 0);
+  EXPECT(capy_widget_set_rich_text_ranges(rt, ranges, 1u) == 0); /* known-good */
+  EXPECT(capy_widget_set_rich_text_ranges(rt, 0, 3u) == -1);     /* NULL + count>0 */
+  /* fail-closed: previous run array intact */
+  EXPECT(capy_widget_rich_text_range_count(rt) == 1);
+  capy_widget_destroy(rt);
+}
+
+static void test_rich_text_clear(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *rt;
+  const struct capy_text_range ranges[2] = {
+      {0u, 2u, CAPY_TEXT_STYLE_BOLD, 0u, 0u},
+      {2u, 2u, CAPY_TEXT_STYLE_ITALIC, 0u, 0u}};
+  struct capy_text_range got;
+  capy_widget_context_init(&ctx, &allocator);
+  rt = capy_widget_create(&ctx, CAPY_WIDGET_RICH_TEXT);
+  EXPECT(rt != 0);
+  EXPECT(capy_widget_set_rich_text_ranges(rt, ranges, 2u) == 0);
+  EXPECT(capy_widget_clear_rich_text_ranges(rt) == 0);
+  EXPECT(capy_widget_rich_text_range_count(rt) == 0);
+  EXPECT(capy_widget_rich_text_range(rt, 0u, &got) == -1);
+  /* range_at on empty: returns 0 and zeroes the output */
+  got.flags = 0x55u;
+  EXPECT(capy_widget_rich_text_range_at(rt, 0u, &got) == 0 && got.start == 0u &&
+         got.length == 0u && got.flags == 0u);
+  capy_widget_destroy(rt);
+}
+
+static void test_rich_text_range_at_lookup(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *rt;
+  const struct capy_text_range ranges[4] = {
+      {0u, 5u, CAPY_TEXT_STYLE_BOLD, 0u, 0u},      /* [0,5)            */
+      {5u, 5u, CAPY_TEXT_STYLE_ITALIC, 0u, 0u},    /* [5,10)           */
+      {3u, 4u, CAPY_TEXT_STYLE_UNDERLINE, 0u, 0u}, /* [3,7) overlaps   */
+      {20u, 0u, CAPY_TEXT_STYLE_BOLD, 0u, 0u}};    /* zero-len: covers nothing */
+  struct capy_text_range got;
+  capy_widget_context_init(&ctx, &allocator);
+  rt = capy_widget_create(&ctx, CAPY_WIDGET_RICH_TEXT);
+  EXPECT(rt != 0);
+  EXPECT(capy_widget_set_rich_text_ranges(rt, ranges, 4u) == 0);
+  /* offset only inside the first run */
+  EXPECT(capy_widget_rich_text_range_at(rt, 1u, &got) == 1 &&
+         got.flags == CAPY_TEXT_STYLE_BOLD);
+  /* offset inside run 0 and run 2: later run (index 2) overrides */
+  EXPECT(capy_widget_rich_text_range_at(rt, 4u, &got) == 1 &&
+         got.flags == CAPY_TEXT_STYLE_UNDERLINE && got.start == 3u);
+  /* offset only inside the second run */
+  EXPECT(capy_widget_rich_text_range_at(rt, 9u, &got) == 1 &&
+         got.flags == CAPY_TEXT_STYLE_ITALIC);
+  /* gap: nothing covers offset 15 -> 0, output zeroed */
+  got.flags = 0xAAu;
+  EXPECT(capy_widget_rich_text_range_at(rt, 15u, &got) == 0 && got.start == 0u &&
+         got.length == 0u && got.flags == 0u);
+  /* zero-length run at 20 covers nothing */
+  EXPECT(capy_widget_rich_text_range_at(rt, 20u, &got) == 0);
+  capy_widget_destroy(rt);
+}
+
+static void test_rich_text_wrong_widget_type_rejected(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *btn;
+  const struct capy_text_range ranges[1] = {{0u, 1u, CAPY_TEXT_STYLE_BOLD, 0u, 0u}};
+  struct capy_text_range got;
+  capy_widget_context_init(&ctx, &allocator);
+  btn = capy_widget_create(&ctx, CAPY_WIDGET_BUTTON);
+  EXPECT(btn != 0);
+  EXPECT(capy_widget_set_rich_text_ranges(btn, ranges, 1u) == -1);
+  EXPECT(capy_widget_clear_rich_text_ranges(btn) == -1);
+  EXPECT(capy_widget_rich_text_range_count(btn) == -1);
+  EXPECT(capy_widget_rich_text_range(btn, 0u, &got) == -1);
+  EXPECT(capy_widget_rich_text_range_at(btn, 0u, &got) == -1);
+  capy_widget_destroy(btn);
+}
+
+static void test_rich_text_null_guards(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *rt;
+  const struct capy_text_range ranges[1] = {{0u, 1u, CAPY_TEXT_STYLE_BOLD, 0u, 0u}};
+  struct capy_text_range got;
+  capy_widget_context_init(&ctx, &allocator);
+  rt = capy_widget_create(&ctx, CAPY_WIDGET_RICH_TEXT);
+  EXPECT(rt != 0);
+  EXPECT(capy_widget_set_rich_text_ranges(0, ranges, 1u) == -1);
+  EXPECT(capy_widget_clear_rich_text_ranges(0) == -1);
+  EXPECT(capy_widget_rich_text_range_count(0) == -1);
+  EXPECT(capy_widget_rich_text_range(0, 0u, &got) == -1);
+  EXPECT(capy_widget_rich_text_range_at(0, 0u, &got) == -1);
+  EXPECT(capy_widget_set_rich_text_ranges(rt, ranges, 1u) == 0);
+  EXPECT(capy_widget_rich_text_range(rt, 0u, 0) == -1);    /* NULL out_range */
+  EXPECT(capy_widget_rich_text_range_at(rt, 0u, 0) == -1); /* NULL out_range */
+  capy_widget_destroy(rt);
+}
+
+/* ── v2.21: advanced widget state — canvas draw callback (since 2.21.0) ───── */
+
+struct canvas_probe {
+  int calls;
+  uint32_t seen_width;
+  void *seen_user_data;
+  int return_value;
+};
+
+static int canvas_probe_draw(struct capy_widget *w, struct capy_display_list *dl,
+                             void *user_data) {
+  struct canvas_probe *p = (struct canvas_probe *)user_data;
+  if (p) {
+    p->calls += 1;
+    p->seen_width = w ? w->bounds.width : 0u;
+    p->seen_user_data = user_data;
+  }
+  /* prove dl is usable from the callback: append one RECT op if there is room */
+  if (dl && w && dl->count < dl->capacity) {
+    dl->cmds[dl->count].op = CAPY_DL_RECT;
+    dl->cmds[dl->count].rect = w->bounds;
+    dl->count += 1u;
+  }
+  return p ? p->return_value : 0;
+}
+
+static void test_canvas_set_and_invoke(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *canvas;
+  struct canvas_probe probe = {0, 0u, 0, 0};
+  struct capy_dl_cmd cmd_buf[4];
+  char text_buf[16];
+  struct capy_display_list dl;
+  capy_widget_context_init(&ctx, &allocator);
+  canvas = capy_widget_create(&ctx, CAPY_WIDGET_CANVAS);
+  EXPECT(canvas != 0);
+  capy_widget_set_bounds(canvas, 0, 0, 50u, 30u);
+  capy_display_list_init(&dl, cmd_buf, 4u, text_buf, 16u);
+  EXPECT(capy_widget_set_canvas_draw(canvas, canvas_probe_draw, &probe) == 0);
+  EXPECT(capy_widget_has_canvas_draw(canvas) == 1);
+  EXPECT(capy_widget_canvas_draw(canvas, &dl) == 0);
+  EXPECT(probe.calls == 1);
+  EXPECT(probe.seen_width == 50u);
+  EXPECT(probe.seen_user_data == &probe);
+  /* the callback appended one RECT op carrying the widget bounds */
+  EXPECT(dl.count == 1u);
+  EXPECT(dl.cmds[0].op == CAPY_DL_RECT);
+  EXPECT(dl.cmds[0].rect.width == 50u);
+  capy_widget_destroy(canvas);
+}
+
+static void test_canvas_callback_failure_propagates(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *canvas;
+  struct canvas_probe probe = {0, 0u, 0, 7}; /* callback returns non-zero */
+  struct capy_dl_cmd cmd_buf[4];
+  char text_buf[16];
+  struct capy_display_list dl;
+  capy_widget_context_init(&ctx, &allocator);
+  canvas = capy_widget_create(&ctx, CAPY_WIDGET_CANVAS);
+  EXPECT(canvas != 0);
+  capy_widget_set_bounds(canvas, 0, 0, 10u, 10u);
+  capy_display_list_init(&dl, cmd_buf, 4u, text_buf, 16u);
+  EXPECT(capy_widget_set_canvas_draw(canvas, canvas_probe_draw, &probe) == 0);
+  /* non-zero callback result is normalised to -1 */
+  EXPECT(capy_widget_canvas_draw(canvas, &dl) == -1);
+  EXPECT(probe.calls == 1);
+  capy_widget_destroy(canvas);
+}
+
+static void test_canvas_clear(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *canvas;
+  struct canvas_probe probe = {0, 0u, 0, 0};
+  struct capy_dl_cmd cmd_buf[4];
+  char text_buf[16];
+  struct capy_display_list dl;
+  void *ud = &probe;
+  capy_widget_context_init(&ctx, &allocator);
+  canvas = capy_widget_create(&ctx, CAPY_WIDGET_CANVAS);
+  EXPECT(canvas != 0);
+  capy_display_list_init(&dl, cmd_buf, 4u, text_buf, 16u);
+  EXPECT(capy_widget_set_canvas_draw(canvas, canvas_probe_draw, &probe) == 0);
+  EXPECT(capy_widget_has_canvas_draw(canvas) == 1);
+  EXPECT(capy_widget_clear_canvas_draw(canvas) == 0);
+  EXPECT(capy_widget_has_canvas_draw(canvas) == 0);
+  /* no callback set -> invoke fails closed, user_data resets to NULL */
+  EXPECT(capy_widget_canvas_draw(canvas, &dl) == -1);
+  EXPECT(capy_widget_canvas_user_data(canvas, &ud) == 0 && ud == 0);
+  capy_widget_destroy(canvas);
+}
+
+static void test_canvas_default_unset(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *canvas;
+  struct capy_dl_cmd cmd_buf[4];
+  char text_buf[16];
+  struct capy_display_list dl;
+  void *ud = &heap; /* non-NULL sentinel: getter must overwrite it to NULL */
+  capy_widget_context_init(&ctx, &allocator);
+  canvas = capy_widget_create(&ctx, CAPY_WIDGET_CANVAS);
+  EXPECT(canvas != 0);
+  capy_display_list_init(&dl, cmd_buf, 4u, text_buf, 16u);
+  /* fresh canvas: no callback */
+  EXPECT(capy_widget_has_canvas_draw(canvas) == 0);
+  EXPECT(capy_widget_canvas_draw(canvas, &dl) == -1);
+  EXPECT(capy_widget_canvas_user_data(canvas, &ud) == 0 && ud == 0);
+  capy_widget_destroy(canvas);
+}
+
+static void test_canvas_set_null_fn_clears(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *canvas;
+  struct canvas_probe probe = {0, 0u, 0, 0};
+  void *ud = &probe;
+  capy_widget_context_init(&ctx, &allocator);
+  canvas = capy_widget_create(&ctx, CAPY_WIDGET_CANVAS);
+  EXPECT(canvas != 0);
+  EXPECT(capy_widget_set_canvas_draw(canvas, canvas_probe_draw, &probe) == 0);
+  EXPECT(capy_widget_has_canvas_draw(canvas) == 1);
+  /* NULL fn clears even when a (ignored) user_data is passed */
+  EXPECT(capy_widget_set_canvas_draw(canvas, 0, &probe) == 0);
+  EXPECT(capy_widget_has_canvas_draw(canvas) == 0);
+  EXPECT(capy_widget_canvas_user_data(canvas, &ud) == 0 && ud == 0);
+  capy_widget_destroy(canvas);
+}
+
+static void test_canvas_user_data_getter(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *canvas;
+  int marker = 42;
+  void *ud = 0;
+  capy_widget_context_init(&ctx, &allocator);
+  canvas = capy_widget_create(&ctx, CAPY_WIDGET_CANVAS);
+  EXPECT(canvas != 0);
+  EXPECT(capy_widget_set_canvas_draw(canvas, canvas_probe_draw, &marker) == 0);
+  EXPECT(capy_widget_canvas_user_data(canvas, &ud) == 0 && ud == &marker);
+  capy_widget_destroy(canvas);
+}
+
+static void test_canvas_wrong_widget_type_rejected(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *btn;
+  struct capy_dl_cmd cmd_buf[4];
+  char text_buf[16];
+  struct capy_display_list dl;
+  void *ud = 0;
+  capy_widget_context_init(&ctx, &allocator);
+  btn = capy_widget_create(&ctx, CAPY_WIDGET_BUTTON);
+  EXPECT(btn != 0);
+  capy_display_list_init(&dl, cmd_buf, 4u, text_buf, 16u);
+  EXPECT(capy_widget_set_canvas_draw(btn, canvas_probe_draw, 0) == -1);
+  EXPECT(capy_widget_clear_canvas_draw(btn) == -1);
+  EXPECT(capy_widget_has_canvas_draw(btn) == -1);
+  EXPECT(capy_widget_canvas_user_data(btn, &ud) == -1);
+  EXPECT(capy_widget_canvas_draw(btn, &dl) == -1);
+  capy_widget_destroy(btn);
+}
+
+static void test_canvas_null_guards(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *canvas;
+  struct canvas_probe probe = {0, 0u, 0, 0};
+  struct capy_dl_cmd cmd_buf[4];
+  char text_buf[16];
+  struct capy_display_list dl;
+  void *ud = 0;
+  capy_widget_context_init(&ctx, &allocator);
+  canvas = capy_widget_create(&ctx, CAPY_WIDGET_CANVAS);
+  EXPECT(canvas != 0);
+  capy_display_list_init(&dl, cmd_buf, 4u, text_buf, 16u);
+  EXPECT(capy_widget_set_canvas_draw(0, canvas_probe_draw, 0) == -1);
+  EXPECT(capy_widget_clear_canvas_draw(0) == -1);
+  EXPECT(capy_widget_has_canvas_draw(0) == -1);
+  EXPECT(capy_widget_canvas_user_data(0, &ud) == -1);
+  EXPECT(capy_widget_canvas_user_data(canvas, 0) == -1); /* NULL out */
+  EXPECT(capy_widget_canvas_draw(0, &dl) == -1);
+  EXPECT(capy_widget_set_canvas_draw(canvas, canvas_probe_draw, &probe) == 0);
+  EXPECT(capy_widget_canvas_draw(canvas, 0) == -1); /* NULL dl */
+  capy_widget_destroy(canvas);
+}
+
+/* ── v2.22: multi-touch gestures — pinch / rotate (since 2.22.0) ──────────── */
+
+static void test_gesture_pinch_out(void) {
+  struct capy_gesture_recognizer r;
+  struct capy_widget_event ev;
+  struct capy_touch_payload p;
+  struct capy_gesture out;
+  capy_gesture_recognizer_init(&r);
+  gesture_make_touch(&ev, &p, CAPY_WIDGET_EVENT_TOUCH_BEGIN, 1u, 0, 0);
+  EXPECT(capy_gesture_feed(&r, &ev, 1000u) == 0);
+  gesture_make_touch(&ev, &p, CAPY_WIDGET_EVENT_TOUCH_BEGIN, 2u, 100, 0);
+  EXPECT(capy_gesture_feed(&r, &ev, 1010u) == 0); /* two-finger session opens */
+  /* finger 2 spreads: separation 100 -> 140, delta +40 >= 20 px */
+  gesture_make_touch(&ev, &p, CAPY_WIDGET_EVENT_TOUCH_MOVE, 2u, 140, 0);
+  EXPECT(capy_gesture_feed(&r, &ev, 1020u) == 1);
+  EXPECT(capy_gesture_poll(&r, &out) == 1);
+  EXPECT(out.kind == (uint8_t)CAPY_GESTURE_PINCH_OUT);
+  EXPECT(out.magnitude == 40);
+}
+
+static void test_gesture_pinch_in(void) {
+  struct capy_gesture_recognizer r;
+  struct capy_widget_event ev;
+  struct capy_touch_payload p;
+  struct capy_gesture out;
+  capy_gesture_recognizer_init(&r);
+  gesture_make_touch(&ev, &p, CAPY_WIDGET_EVENT_TOUCH_BEGIN, 1u, 0, 0);
+  EXPECT(capy_gesture_feed(&r, &ev, 0u) == 0);
+  gesture_make_touch(&ev, &p, CAPY_WIDGET_EVENT_TOUCH_BEGIN, 2u, 100, 0);
+  EXPECT(capy_gesture_feed(&r, &ev, 10u) == 0);
+  /* finger 2 approaches: separation 100 -> 70, delta -30, |30| >= 20 px */
+  gesture_make_touch(&ev, &p, CAPY_WIDGET_EVENT_TOUCH_MOVE, 2u, 70, 0);
+  EXPECT(capy_gesture_feed(&r, &ev, 20u) == 1);
+  EXPECT(capy_gesture_poll(&r, &out) == 1);
+  EXPECT(out.kind == (uint8_t)CAPY_GESTURE_PINCH_IN);
+  EXPECT(out.magnitude == -30);
+}
+
+static void test_gesture_rotate_cw(void) {
+  struct capy_gesture_recognizer r;
+  struct capy_widget_event ev;
+  struct capy_touch_payload p;
+  struct capy_gesture out;
+  capy_gesture_recognizer_init(&r);
+  /* baseline vector v0 = touch1 - touch2 = (10,0) */
+  gesture_make_touch(&ev, &p, CAPY_WIDGET_EVENT_TOUCH_BEGIN, 1u, 10, 0);
+  EXPECT(capy_gesture_feed(&r, &ev, 0u) == 0);
+  gesture_make_touch(&ev, &p, CAPY_WIDGET_EVENT_TOUCH_BEGIN, 2u, 0, 0);
+  EXPECT(capy_gesture_feed(&r, &ev, 10u) == 0);
+  /* rotate finger 1 right->down (screen y-down clockwise): cur vector (0,10),
+   * cross = 10*10 - 0*0 = +100 > 0 -> CW; separation stays 10 (<20) so pinch
+   * does not pre-empt. */
+  gesture_make_touch(&ev, &p, CAPY_WIDGET_EVENT_TOUCH_MOVE, 1u, 0, 10);
+  EXPECT(capy_gesture_feed(&r, &ev, 20u) == 1);
+  EXPECT(capy_gesture_poll(&r, &out) == 1);
+  EXPECT(out.kind == (uint8_t)CAPY_GESTURE_ROTATE_CW);
+}
+
+static void test_gesture_rotate_ccw(void) {
+  struct capy_gesture_recognizer r;
+  struct capy_widget_event ev;
+  struct capy_touch_payload p;
+  struct capy_gesture out;
+  capy_gesture_recognizer_init(&r);
+  gesture_make_touch(&ev, &p, CAPY_WIDGET_EVENT_TOUCH_BEGIN, 1u, 10, 0);
+  EXPECT(capy_gesture_feed(&r, &ev, 0u) == 0);
+  gesture_make_touch(&ev, &p, CAPY_WIDGET_EVENT_TOUCH_BEGIN, 2u, 0, 0);
+  EXPECT(capy_gesture_feed(&r, &ev, 10u) == 0);
+  /* rotate finger 1 right->up: cur vector (0,-10), cross = 10*(-10) = -100 < 0
+   * -> CCW. */
+  gesture_make_touch(&ev, &p, CAPY_WIDGET_EVENT_TOUCH_MOVE, 1u, 0, -10);
+  EXPECT(capy_gesture_feed(&r, &ev, 20u) == 1);
+  EXPECT(capy_gesture_poll(&r, &out) == 1);
+  EXPECT(out.kind == (uint8_t)CAPY_GESTURE_ROTATE_CCW);
+}
+
+static void test_gesture_rotate_below_threshold(void) {
+  struct capy_gesture_recognizer r;
+  struct capy_widget_event ev;
+  struct capy_touch_payload p;
+  struct capy_gesture out;
+  capy_gesture_recognizer_init(&r);
+  /* baseline v0 = (100,0), separation 100 */
+  gesture_make_touch(&ev, &p, CAPY_WIDGET_EVENT_TOUCH_BEGIN, 1u, 100, 0);
+  EXPECT(capy_gesture_feed(&r, &ev, 0u) == 0);
+  gesture_make_touch(&ev, &p, CAPY_WIDGET_EVENT_TOUCH_BEGIN, 2u, 0, 0);
+  EXPECT(capy_gesture_feed(&r, &ev, 10u) == 0);
+  /* small rotation: cur (100,20), tan = 2000/10000 = 0.2 (~11 deg) < 27/100 */
+  gesture_make_touch(&ev, &p, CAPY_WIDGET_EVENT_TOUCH_MOVE, 1u, 100, 20);
+  EXPECT(capy_gesture_feed(&r, &ev, 20u) == 0);
+  EXPECT(capy_gesture_poll(&r, &out) == 0);
+  /* larger rotation: cur (100,40), tan = 4000/10000 = 0.4 (~22 deg) > 27/100 */
+  gesture_make_touch(&ev, &p, CAPY_WIDGET_EVENT_TOUCH_MOVE, 1u, 100, 40);
+  EXPECT(capy_gesture_feed(&r, &ev, 30u) == 1);
+  EXPECT(capy_gesture_poll(&r, &out) == 1);
+  EXPECT(out.kind == (uint8_t)CAPY_GESTURE_ROTATE_CW);
+}
+
+static void test_gesture_multi_touch_end_resets(void) {
+  struct capy_gesture_recognizer r;
+  struct capy_widget_event ev;
+  struct capy_touch_payload p;
+  struct capy_gesture out;
+  capy_gesture_recognizer_init(&r);
+  gesture_make_touch(&ev, &p, CAPY_WIDGET_EVENT_TOUCH_BEGIN, 1u, 0, 0);
+  EXPECT(capy_gesture_feed(&r, &ev, 0u) == 0);
+  gesture_make_touch(&ev, &p, CAPY_WIDGET_EVENT_TOUCH_BEGIN, 2u, 100, 0);
+  EXPECT(capy_gesture_feed(&r, &ev, 10u) == 0);
+  gesture_make_touch(&ev, &p, CAPY_WIDGET_EVENT_TOUCH_MOVE, 2u, 140, 0);
+  EXPECT(capy_gesture_feed(&r, &ev, 20u) == 1); /* PINCH_OUT */
+  EXPECT(capy_gesture_poll(&r, &out) == 1);
+  /* lifting finger 2 ends the session with no further emit */
+  gesture_make_touch(&ev, &p, CAPY_WIDGET_EVENT_TOUCH_END, 2u, 140, 0);
+  EXPECT(capy_gesture_feed(&r, &ev, 30u) == 0);
+  /* the still-down finger 1 lifting is now a no-op (no spurious TAP) */
+  gesture_make_touch(&ev, &p, CAPY_WIDGET_EVENT_TOUCH_END, 1u, 0, 0);
+  EXPECT(capy_gesture_feed(&r, &ev, 40u) == 0);
+  EXPECT(capy_gesture_poll(&r, &out) == 0);
+  /* a fresh single-finger tap works again after the session reset */
+  gesture_make_touch(&ev, &p, CAPY_WIDGET_EVENT_TOUCH_BEGIN, 5u, 5, 5);
+  EXPECT(capy_gesture_feed(&r, &ev, 100u) == 0);
+  gesture_make_touch(&ev, &p, CAPY_WIDGET_EVENT_TOUCH_END, 5u, 5, 5);
+  EXPECT(capy_gesture_feed(&r, &ev, 120u) == 1);
+  EXPECT(capy_gesture_poll(&r, &out) == 1);
+  EXPECT(out.kind == (uint8_t)CAPY_GESTURE_TAP);
+}
+
+static void test_gesture_single_touch_swipe_regression(void) {
+  struct capy_gesture_recognizer r;
+  struct capy_widget_event ev;
+  struct capy_touch_payload p;
+  struct capy_gesture out;
+  capy_gesture_recognizer_init(&r);
+  /* one finger only: the restructured feed must still produce a swipe */
+  gesture_make_touch(&ev, &p, CAPY_WIDGET_EVENT_TOUCH_BEGIN, 1u, 100, 100);
+  EXPECT(capy_gesture_feed(&r, &ev, 0u) == 0);
+  gesture_make_touch(&ev, &p, CAPY_WIDGET_EVENT_TOUCH_END, 1u, 170, 100);
+  EXPECT(capy_gesture_feed(&r, &ev, 30u) == 1);
+  EXPECT(capy_gesture_poll(&r, &out) == 1);
+  EXPECT(out.kind == (uint8_t)CAPY_GESTURE_SWIPE_RIGHT);
+  EXPECT(out.magnitude == 70);
+}
+
+static void test_gesture_third_finger_ignored(void) {
+  struct capy_gesture_recognizer r;
+  struct capy_widget_event ev;
+  struct capy_touch_payload p;
+  struct capy_gesture out;
+  capy_gesture_recognizer_init(&r);
+  gesture_make_touch(&ev, &p, CAPY_WIDGET_EVENT_TOUCH_BEGIN, 1u, 0, 0);
+  EXPECT(capy_gesture_feed(&r, &ev, 0u) == 0);
+  gesture_make_touch(&ev, &p, CAPY_WIDGET_EVENT_TOUCH_BEGIN, 2u, 100, 0);
+  EXPECT(capy_gesture_feed(&r, &ev, 10u) == 0);
+  /* a third concurrent finger is ignored; the session keeps fingers 1 and 2 */
+  gesture_make_touch(&ev, &p, CAPY_WIDGET_EVENT_TOUCH_BEGIN, 3u, 50, 50);
+  EXPECT(capy_gesture_feed(&r, &ev, 15u) == 0);
+  gesture_make_touch(&ev, &p, CAPY_WIDGET_EVENT_TOUCH_MOVE, 2u, 140, 0);
+  EXPECT(capy_gesture_feed(&r, &ev, 20u) == 1);
+  EXPECT(capy_gesture_poll(&r, &out) == 1);
+  EXPECT(out.kind == (uint8_t)CAPY_GESTURE_PINCH_OUT);
+}
+
 int main(void) {
   test_create_find_and_click();
   test_disabled_widget_ignores_input();
@@ -8395,5 +8932,29 @@ int main(void) {
   test_chart_range_minmax();
   test_chart_wrong_widget_type_rejected();
   test_chart_null_guards();
+  test_rich_text_set_and_query();
+  test_rich_text_range_out_of_range();
+  test_rich_text_set_zero_count_clears();
+  test_rich_text_set_null_ranges_rejected();
+  test_rich_text_clear();
+  test_rich_text_range_at_lookup();
+  test_rich_text_wrong_widget_type_rejected();
+  test_rich_text_null_guards();
+  test_canvas_set_and_invoke();
+  test_canvas_callback_failure_propagates();
+  test_canvas_clear();
+  test_canvas_default_unset();
+  test_canvas_set_null_fn_clears();
+  test_canvas_user_data_getter();
+  test_canvas_wrong_widget_type_rejected();
+  test_canvas_null_guards();
+  test_gesture_pinch_out();
+  test_gesture_pinch_in();
+  test_gesture_rotate_cw();
+  test_gesture_rotate_ccw();
+  test_gesture_rotate_below_threshold();
+  test_gesture_multi_touch_end_resets();
+  test_gesture_single_touch_swipe_regression();
+  test_gesture_third_finger_ignored();
   return failures == 0 ? 0 : 1;
 }
