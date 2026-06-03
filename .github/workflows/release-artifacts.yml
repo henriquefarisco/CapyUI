@@ -51,7 +51,7 @@ jobs:
             build/capypkg/*.bin
             build/capypkg/*.manifest
             build/capypkg/modules-index.txt
-          if-no-files-found: erro
+          if-no-files-found: error
 
       - name: Resolve target release tag
         id: tag
