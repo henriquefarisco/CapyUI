@@ -22,7 +22,7 @@ jobs:
     name: Public ABI removal guard
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           # Need full history + tags so the script can resolve the latest v*
           # baseline tag to diff against.
