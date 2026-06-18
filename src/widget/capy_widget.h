@@ -39,6 +39,14 @@
      (uint32_t)CAPYUI_API_VERSION_MINOR << 8 | \
      (uint32_t)CAPYUI_API_VERSION_PATCH)
 
+/* Runtime accessor for the linked widget-core ABI version (since 2.22).
+ * Returns CAPYUI_API_VERSION_TAG so a dynamically-linked host, the CapyOS
+ * adapter or a plugin loader can negotiate against the actual linked core at
+ * run time, not only the compile-time macro. Decompose with
+ * `(tag >> 16) & 0xFF` (major), `(tag >> 8) & 0xFF` (minor), `tag & 0xFF`
+ * (patch). Additive, pure, deterministic. */
+uint32_t capy_widget_abi_version(void);
+
 /* Maximum plugin descriptors per `capy_widget_context` (since 2.0). The
  * static cap keeps registration zero-alloc; hosts that need more can
  * fork the limit at compile time. */
@@ -102,6 +110,13 @@ enum capy_widget_type {
   CAPY_WIDGET_DATE_PICKER,
   CAPY_WIDGET_AUTOCOMPLETE
 };
+
+/* Stable short ASCII name for a widget type (e.g. "BUTTON", "TEXTBOX"), or
+ * "NONE" for CAPY_WIDGET_NONE and "UNKNOWN" for an out-of-range value. Always
+ * non-NULL, so inspector/debug tooling, accessibility labels and serialization
+ * diagnostics can render the type unconditionally. Additive, pure,
+ * deterministic. (since 2.22) */
+const char *capy_widget_type_name(enum capy_widget_type type);
 
 enum capy_widget_event_type {
   CAPY_WIDGET_EVENT_NONE = 0,

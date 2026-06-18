@@ -8616,6 +8616,29 @@ static void test_gesture_third_finger_ignored(void) {
   EXPECT(out.kind == (uint8_t)CAPY_GESTURE_PINCH_OUT);
 }
 
+static void test_abi_version_accessor(void) {
+  uint32_t tag = capy_widget_abi_version();
+  EXPECT(tag == CAPYUI_API_VERSION_TAG);
+  EXPECT(((tag >> 16) & 0xFFu) == (uint32_t)CAPYUI_API_VERSION_MAJOR);
+  EXPECT(((tag >> 8) & 0xFFu) == (uint32_t)CAPYUI_API_VERSION_MINOR);
+  EXPECT((tag & 0xFFu) == (uint32_t)CAPYUI_API_VERSION_PATCH);
+  EXPECT(((tag >> 16) & 0xFFu) >= 1u);
+}
+
+static void test_widget_type_name(void) {
+  int t;
+  EXPECT(capy_widget_type_name(CAPY_WIDGET_BUTTON) != 0);
+  EXPECT(capy_widget_type_name(CAPY_WIDGET_BUTTON)[0] == 'B');
+  for (t = (int)CAPY_WIDGET_NONE; t <= (int)CAPY_WIDGET_AUTOCOMPLETE; ++t) {
+    const char *n = capy_widget_type_name((enum capy_widget_type)t);
+    EXPECT(n != 0 && n[0] != '\0');
+  }
+  EXPECT(capy_widget_type_name((enum capy_widget_type)9999) != 0);
+  EXPECT(capy_widget_type_name((enum capy_widget_type)9999)[0] != '\0');
+  EXPECT(capy_widget_type_name(CAPY_WIDGET_BUTTON)[0] !=
+         capy_widget_type_name(CAPY_WIDGET_LABEL)[0]);
+}
+
 int main(void) {
   test_create_find_and_click();
   test_disabled_widget_ignores_input();
@@ -8962,5 +8985,7 @@ int main(void) {
   test_gesture_multi_touch_end_resets();
   test_gesture_single_touch_swipe_regression();
   test_gesture_third_finger_ignored();
+  test_abi_version_accessor();
+  test_widget_type_name();
   return failures == 0 ? 0 : 1;
 }

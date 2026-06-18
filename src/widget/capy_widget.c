@@ -32,6 +32,35 @@ static int capy_widget_point_in_rect(int32_t x, int32_t y,
          y >= rect->y && y < rect->y + (int32_t)rect->height;
 }
 
+uint32_t capy_widget_abi_version(void) { return CAPYUI_API_VERSION_TAG; }
+
+const char *capy_widget_type_name(enum capy_widget_type type) {
+  switch (type) {
+  case CAPY_WIDGET_NONE: return "NONE";
+  case CAPY_WIDGET_LABEL: return "LABEL";
+  case CAPY_WIDGET_BUTTON: return "BUTTON";
+  case CAPY_WIDGET_TEXTBOX: return "TEXTBOX";
+  case CAPY_WIDGET_CHECKBOX: return "CHECKBOX";
+  case CAPY_WIDGET_LIST: return "LIST";
+  case CAPY_WIDGET_PANEL: return "PANEL";
+  case CAPY_WIDGET_SCROLLBAR: return "SCROLLBAR";
+  case CAPY_WIDGET_MENUBAR: return "MENUBAR";
+  case CAPY_WIDGET_MENU_ITEM: return "MENU_ITEM";
+  case CAPY_WIDGET_DIALOG: return "DIALOG";
+  case CAPY_WIDGET_PROGRESS: return "PROGRESS";
+  case CAPY_WIDGET_TABS: return "TABS";
+  case CAPY_WIDGET_TREE: return "TREE";
+  case CAPY_WIDGET_TABLE: return "TABLE";
+  case CAPY_WIDGET_RICH_TEXT: return "RICH_TEXT";
+  case CAPY_WIDGET_CANVAS: return "CANVAS";
+  case CAPY_WIDGET_CHART: return "CHART";
+  case CAPY_WIDGET_COLOR_PICKER: return "COLOR_PICKER";
+  case CAPY_WIDGET_DATE_PICKER: return "DATE_PICKER";
+  case CAPY_WIDGET_AUTOCOMPLETE: return "AUTOCOMPLETE";
+  }
+  return "UNKNOWN";
+}
+
 struct capy_widget_style capy_widget_default_style(void) {
   struct capy_widget_style style;
   style.bg_color = 0xFF202428u;

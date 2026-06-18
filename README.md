@@ -1,6 +1,6 @@
 # CapyUI
 
-Version: 2.22.0
+Version: 2.22.1
 
 CapyUI owns portable widget primitives and interaction contracts for CapyOS services. As of `1.0.0` the `capy-ui-widget` ABI is **frozen**: minor releases stay additive, breaking changes require a major bump per `docs/roadmap/contracts/deprecation-policy.md`.
 
@@ -39,7 +39,7 @@ make package
 Asset filenames are intentionally version-less inside each GitHub Release. The published `modules-index.txt` uses tag-pinned payload URLs:
 
 ```
-https://github.com/<owner>/CapyUI/releases/download/v2.22.0/modules-index.txt
+https://github.com/<owner>/CapyUI/releases/download/v2.22.1/modules-index.txt
 ```
 
 The semantic `version=` field inside each `.manifest` still comes from the `VERSION` file in this repo, so `capypkg` knows when to upgrade.
@@ -54,6 +54,6 @@ Every push to `main` triggers `.github/workflows/release-artifacts.yml`, which:
 2. moves the rolling `latest` git tag to the current commit,
 3. republishes the GitHub Release `latest` with the new `.bin/.manifest/modules-index.txt` assets and marks it as the latest release.
 
-CapyOS first-boot releases should pin the index URL to a semver release tag, for example `https://github.com/<owner>/CapyUI/releases/download/v2.22.0/modules-index.txt`. This avoids an extra GitHub `latest` redirect during kernel-space module installation.
+CapyOS first-boot releases should pin the index URL to a semver release tag, for example `https://github.com/<owner>/CapyUI/releases/download/v2.22.1/modules-index.txt`. This avoids an extra GitHub `latest` redirect during kernel-space module installation.
 
 To freeze a semver release without affecting the rolling channel, push a `v*` tag (for example `v0.7.1`). The same workflow handles tag-triggered runs as standalone frozen releases.

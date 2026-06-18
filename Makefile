@@ -1,4 +1,4 @@
-# CapyUI Makefile — 2.22.0 — ABI capy-ui-widget 2.22 (multi-touch gestures: pinch + rotate)
+# CapyUI Makefile — 2.22.1 — ABI capy-ui-widget 2.22 (multi-touch gestures: pinch + rotate)
 #
 # CapyUI owns and publishes its own capypkg modules. The build does NOT
 # touch CapyOS sources. After the alpha.241 migration the desktop session
@@ -88,7 +88,7 @@ test: $(TEST_BIN)
 lint:
 	$(CC) $(CPPFLAGS) $(CFLAGS) -fsyntax-only $(SRC_WIDGET)
 	git diff --check
-	test "$(VERSION)" = "2.22.0"
+	test "$(VERSION)" = "2.22.1"
 
 security:
 	$(CC) $(CPPFLAGS) $(CFLAGS) -D_FORTIFY_SOURCE=2 -fstack-protector-strong -fPIE -fsyntax-only $(SRC_WIDGET)
@@ -98,10 +98,10 @@ security:
 # definitions must equal the count of call-sites and both must equal the
 # documented total. Bump this number (and the docs) when adding tests.
 version-check:
-	test "$(VERSION)" = "2.22.0"
-	grep -q "Version: 2.22.0" README.md
-	test "$$(grep -cE '^  test_[a-z0-9_]+\(\);' tests/test_widget_contracts.c)" = "345"
-	test "$$(grep -cE '^static void test_[a-z0-9_]+\(void\)' tests/test_widget_contracts.c)" = "345"
+	test "$(VERSION)" = "2.22.1"
+	grep -q "Version: 2.22.1" README.md
+	test "$$(grep -cE '^  test_[a-z0-9_]+\(\);' tests/test_widget_contracts.c)" = "347"
+	test "$$(grep -cE '^static void test_[a-z0-9_]+\(void\)' tests/test_widget_contracts.c)" = "347"
 
 validate: lint security check-decoupling test version-check
 

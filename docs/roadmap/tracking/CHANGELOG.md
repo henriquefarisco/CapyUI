@@ -2,6 +2,24 @@
 
 Mudanças por release tag, da mais recente para a mais antiga. Cada entrada é imutável após release.
 
+## [Unreleased]
+
+**Aditivo (in-tree, sem bump de versão):** acessor de versão de ABI em runtime + nome de tipo de widget.
+
+### Adicionado
+
+- `uint32_t capy_widget_abi_version(void)` (`src/widget/capy_widget.{h,c}`): retorna `CAPYUI_API_VERSION_TAG` para negociação de versão em runtime por um host dinamicamente ligado, o adapter CapyOS ou um loader de plugin (complementa a macro de compile-time e o gate `capy_ui_abi_required`). Puro, determinístico, zero-alloc/zero-float.
+- `const char *capy_widget_type_name(enum capy_widget_type)` (`src/widget/capy_widget.{h,c}`): nome ASCII curto estável por tipo de widget ("BUTTON", "TEXTBOX", ...; "NONE"/"UNKNOWN" nos extremos) para labels de inspector/debug/acessibilidade e diagnósticos de serialização. Puro, determinístico, aditivo.
+- 2 testes (`test_abi_version_accessor`, `test_widget_type_name`). Suíte 345 → **347** (asserções de contagem no `Makefile` atualizadas).
+
+### Compatibilidade
+
+- 100% aditivo. Nenhuma struct/enum/op de display-list alterada; DL schema permanece `7`; macros de versão inalteradas (`2/22/0`). Sem bump de `VERSION` (entrega in-tree, pendente de release/tag).
+
+### Validação (no host via `Automation/remote-exec.sh`)
+
+- `remote-exec.sh -d CapyUI make validate` → exit 0 (lint + security + decoupling + 347 testes + version-check).
+
 ## [2.22.0] — 2026-06-02
 
 **Marco:** **multi-touch gestures** — completa os 4 slots `PINCH_IN/OUT` + `ROTATE_CW/CCW` reservados desde a v1.4 (gesture engine). Primeira fatia fora da trilha de _advanced-widget state_ (que fechou 8/8 na 2.21); retoma o backlog aditivo deferido. O recognizer agora rastreia um segundo dedo e emite pinch/rotate. Integer-only (zero-float): pinch = delta assinado da separação Chebyshev; rotate = sinal do produto vetorial inteiro (direção) + significância escala-independente `|cross|/dot > 27/100` (~15°). Aditivo sobre 2.21; DL schema permanece `7`.
