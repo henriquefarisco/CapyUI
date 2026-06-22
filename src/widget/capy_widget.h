@@ -791,6 +791,13 @@ int capy_widget_handle_event(struct capy_widget *widget,
                              const struct capy_widget_event *event);
 struct capy_widget *capy_widget_find_at(struct capy_widget *root, int32_t x,
                                         int32_t y);
+/* Depth-first search for the first widget whose `id` matches (ids are
+ * auto-assigned per widget context on creation). Returns NULL when `root`
+ * is NULL or no widget in the subtree has that id. Pure: no mutation and no
+ * layout/display-list effect; complements capy_widget_find_at (by point). */
+struct capy_widget *capy_widget_find_by_id(struct capy_widget *root,
+                                           uint32_t id);
+
 void capy_widget_focus(struct capy_widget *widget);
 void capy_widget_set_on_click(struct capy_widget *widget,
                               capy_widget_callback callback, void *user_data);

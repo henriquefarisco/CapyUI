@@ -1,6 +1,6 @@
 # CapyUI
 
-Version: 2.22.1
+Version: 2.22.2
 
 CapyUI owns portable widget primitives and interaction contracts for CapyOS services. As of `1.0.0` the `capy-ui-widget` ABI is **frozen**: minor releases stay additive, breaking changes require a major bump per `docs/roadmap/contracts/deprecation-policy.md`.
 

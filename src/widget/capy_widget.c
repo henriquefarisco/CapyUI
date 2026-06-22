@@ -1031,6 +1031,23 @@ struct capy_widget *capy_widget_find_at(struct capy_widget *root, int32_t x,
   return capy_widget_point_in_rect(x, y, &root->bounds) ? root : 0;
 }
 
+struct capy_widget *capy_widget_find_by_id(struct capy_widget *root,
+                                           uint32_t id) {
+  if (!root) {
+    return 0;
+  }
+  if (root->id == id) {
+    return root;
+  }
+  for (uint32_t i = 0u; i < root->child_count; ++i) {
+    struct capy_widget *found = capy_widget_find_by_id(root->children[i], id);
+    if (found) {
+      return found;
+    }
+  }
+  return 0;
+}
+
 void capy_widget_focus(struct capy_widget *widget) {
   if (widget) {
     widget->focused = 1u;

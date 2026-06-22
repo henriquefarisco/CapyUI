@@ -2,7 +2,16 @@
 
 Mudanças por release tag, da mais recente para a mais antiga. Cada entrada é imutável após release.
 
-## [Unreleased]
+## [2.22.2] — 2026-06-22
+
+**Aditivo (in-tree):** busca de widget por id (`capy_widget_find_by_id`), pura/aditiva sobre a ABI capy-ui-widget v2.22.
+
+### Adicionado
+
+- `struct capy_widget *capy_widget_find_by_id(struct capy_widget *root, uint32_t id)` (`src/widget/capy_widget.{h,c}`): busca em profundidade (pre-order) pelo primeiro widget cujo `id` (auto-atribuido por contexto) bate; complementa `capy_widget_find_at` (hit-test por coordenada) com enderecamento estavel por id para inspector/automacao/atualizacao dirigida. Puro: sem mutacao, sem efeito em layout/display-list.
+- 1 teste (`test_find_by_id`). Suite 347 → **348** (assercoes de contagem no `Makefile` atualizadas).
+
+## [2.22.1] — 2026-06-18
 
 **Aditivo (in-tree, sem bump de versão):** acessor de versão de ABI em runtime + nome de tipo de widget.
 

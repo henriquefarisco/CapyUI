@@ -45,6 +45,29 @@ static void click_count(struct capy_widget *widget, void *user_data) {
   ++*count;
 }
 
+static void test_find_by_id(void) {
+  struct test_heap heap = {{0}, 0u, 0u};
+  struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
+  struct capy_widget_context ctx;
+  struct capy_widget *root;
+  struct capy_widget *a;
+  struct capy_widget *b;
+  capy_widget_context_init(&ctx, &allocator);
+  root = capy_widget_create(&ctx, CAPY_WIDGET_PANEL);
+  a = capy_widget_create(&ctx, CAPY_WIDGET_PANEL);
+  b = capy_widget_create(&ctx, CAPY_WIDGET_BUTTON);
+  EXPECT(root != 0);
+  EXPECT(a != 0);
+  EXPECT(b != 0);
+  EXPECT(capy_widget_add_child(root, a) == 0);
+  EXPECT(capy_widget_add_child(a, b) == 0);
+  EXPECT(capy_widget_find_by_id(root, root->id) == root);
+  EXPECT(capy_widget_find_by_id(root, a->id) == a);
+  EXPECT(capy_widget_find_by_id(root, b->id) == b);
+  EXPECT(capy_widget_find_by_id(root, b->id + 1000u) == 0);
+  EXPECT(capy_widget_find_by_id(0, root->id) == 0);
+}
+
 static void test_create_find_and_click(void) {
   struct test_heap heap = {{0}, 0u, 0u};
   struct capy_widget_allocator allocator = {test_alloc, test_free, &heap};
@@ -8640,6 +8663,7 @@ static void test_widget_type_name(void) {
 }
 
 int main(void) {
+  test_find_by_id();
   test_create_find_and_click();
   test_disabled_widget_ignores_input();
   test_layout_stack_equal_grow();
