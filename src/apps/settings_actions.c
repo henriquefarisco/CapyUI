@@ -67,6 +67,20 @@ int settings_validate_username(const char *name) {
   return (len < USER_NAME_MAX) ? 0 : -1;
 }
 
+/* Etapa 6 / Slice 6.6 apps-basic-roundtrip — Settings headless smoke (no GUI/
+ * persistence). Exercises the username-policy validator (pure: charset + length,
+ * no session/disk). The apply_* actions persist to /system/config.ini and mutate
+ * global state, so they are intentionally NOT exercised here. Returns 0 on
+ * success. */
+int settings_smoke_roundtrip(void) {
+  if (settings_validate_username("alice") != 0) return 1;     /* valid */
+  if (settings_validate_username("a_b-9") != 0) return 2;     /* valid charset */
+  if (settings_validate_username("") != -1) return 3;         /* empty rejected */
+  if (settings_validate_username("bad name") != -1) return 4; /* space rejected */
+  if (settings_validate_username("x/y") != -1) return 5;      /* slash rejected */
+  return 0;
+}
+
 int settings_require_admin(struct settings_app *app) {
   struct session_context *sess = session_active();
   const struct user_record *user = sess ? session_user(sess) : NULL;

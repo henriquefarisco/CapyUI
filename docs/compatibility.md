@@ -97,8 +97,10 @@ All 14 pre-1.0 ABI minors (`0.0` through `0.15`, with `0.7` and `0.12` reserved)
   `calculator_smoke_roundtrip`) runs an app's primary function headlessly (no
   window/compositor) and returns 0 on success, so the CapyOS in-kernel
   orchestrator can count clean passes and emit `[smoke] apps-basic-roundtrip
-  ready`. Roundtrip set: calculator (`calc_eval`) + task_manager (`task_iter` /
-  `process_iter` enumeration) (REQUIRED_APPS=2); grows app-by-app.
+  ready`. Roundtrip set covers all five basic apps (REQUIRED_APPS=5): calculator
+  (`calc_eval`), task_manager (`task_iter`/`process_iter` enumeration),
+  file_manager (path join/compare/containment helpers), text_editor
+  (`handle_key` buffer edits) and settings (username-policy validator).
 
 The desktop session **does not** ship its own compositor, fonts,
 framebuffer driver, raw input drivers, theme provider, accessibility

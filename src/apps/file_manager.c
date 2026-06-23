@@ -289,6 +289,23 @@ int fm_path_inside_or_same(const char *dir, const char *path) {
   return dir[plen] == '/';
 }
 
+/* Etapa 6 / Slice 6.6 apps-basic-roundtrip — File Manager headless smoke (no
+ * GUI/FS). Exercises the file manager's pure path-manipulation primary logic --
+ * the same join / compare / containment / basename helpers that back
+ * navigation, move and drag-drop. Deterministic, no window, no VFS (FS content
+ * is not guaranteed at the pre-login smoke point). Returns 0 on success. */
+int file_manager_smoke_roundtrip(void) {
+  char out[FM_PATH_MAX];
+  fm_join_path("/dir", "f.txt", out, sizeof(out));
+  if (!fm_path_equal(out, "/dir/f.txt")) return 1;
+  fm_join_path("/dir/", "f.txt", out, sizeof(out)); /* trailing slash not doubled */
+  if (!fm_path_equal(out, "/dir/f.txt")) return 2;
+  if (!fm_path_inside_or_same("/dir/sub", "/dir")) return 3; /* sub is inside dir */
+  if (fm_path_inside_or_same("/dir", "/other")) return 4;    /* not inside */
+  if (!fm_path_equal(fm_basename("/a/b/c.txt"), "c.txt")) return 5;
+  return 0;
+}
+
 int fm_move_path_to_dir(struct file_manager_app *app, const char *src_path,
                         const char *dst_dir) {
   char dst_path[FM_PATH_MAX];

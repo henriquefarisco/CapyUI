@@ -301,6 +301,25 @@ void text_editor_handle_key(struct text_editor_app *app, uint32_t keycode, char 
   }
 }
 
+/* Etapa 6 / Slice 6.6 apps-basic-roundtrip — Text Editor headless smoke (no
+ * GUI). Exercises the editor's primary text-buffer logic (text_editor_handle_key:
+ * insert / backspace / newline split) on the in-kernel singleton g_editor, which
+ * is unused before the editor window opens (text_editor_open re-zeros it, so
+ * leaving it dirty here is safe). No window/compositor. Returns 0 on success. */
+int text_editor_smoke_roundtrip(void) {
+  struct text_editor_app *ed = &g_editor;
+  kmemzero(ed, sizeof(*ed));
+  ed->line_count = 1;
+  text_editor_handle_key(ed, 0u, 'H');
+  text_editor_handle_key(ed, 0u, 'i');
+  if (ed->cursor_col != 2 || !kstreq(ed->lines[0], "Hi")) return 1;
+  text_editor_handle_key(ed, 0u, '\b'); /* delete 'i' -> "H" */
+  if (ed->cursor_col != 1 || !kstreq(ed->lines[0], "H")) return 2;
+  text_editor_handle_key(ed, 0u, '\n'); /* split -> 2 lines, cursor at line 1 */
+  if (ed->line_count != 2 || ed->cursor_line != 1 || ed->cursor_col != 0) return 3;
+  return 0;
+}
+
 /* Etapa UX W7-ish (2026-05-03): pinta um botao retangular com label
  * + borda. Usado para Save/Open na toolbar do editor. */
 static void editor_paint_button(struct gui_surface *s, const struct font *f,
