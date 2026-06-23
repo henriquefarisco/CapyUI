@@ -66,14 +66,20 @@ static int task_manager_count_processes(void) {
 /* Etapa 6 / Slice 6.6 apps-basic-roundtrip — Task Manager headless smoke (no
  * GUI/compositor). Exercises the Task Manager's primary data-gathering path:
  * the same `task_iter` / `process_iter` enumeration that backs the TASKS and
- * PROCESSES views, with no window. The kernel always has at least the running
- * boot task, so a healthy enumeration yields >= 1 live task; the process count
- * is a non-negative tally. Returns 0 on a sane snapshot, non-zero if the
- * iterators report a clearly broken state, so the apps-basic-roundtrip
- * orchestrator can count it as a clean app pass. Pure: no window, no widgets. */
+ * PROCESSES views, with no window. At the pre-login apps-roundtrip smoke point
+ * the preemptive run queue is empty (task_current()==NULL, 0 live
+ * tasks/processes -- the kernel boots linearly, the demo that would spawn tasks
+ * is a no-op unless CAPYOS_PREEMPTIVE_DEMO; see arch/x86_64/preemptive_boot.c).
+ * So the roundtrip criterion is that the enumeration RUNS and TERMINATES with
+ * sane, stable counts -- NOT that any task happens to exist (requiring >= 1
+ * would wrongly fail the gate at boot). Returns 0 on success. Pure: no window,
+ * no widgets. */
 int task_manager_smoke_roundtrip(void) {
-  if (task_manager_count_tasks() < 1) return 1;
-  if (task_manager_count_processes() < 0) return 2;
+  int tasks = task_manager_count_tasks();
+  int procs = task_manager_count_processes();
+  if (tasks < 0 || procs < 0) return 1;              /* sane non-negative tallies */
+  if (task_manager_count_tasks() != tasks) return 2; /* enumeration is stable */
+  if (task_manager_count_processes() != procs) return 3;
   return 0;
 }
 
