@@ -63,6 +63,20 @@ static int task_manager_count_processes(void) {
   return n;
 }
 
+/* Etapa 6 / Slice 6.6 apps-basic-roundtrip — Task Manager headless smoke (no
+ * GUI/compositor). Exercises the Task Manager's primary data-gathering path:
+ * the same `task_iter` / `process_iter` enumeration that backs the TASKS and
+ * PROCESSES views, with no window. The kernel always has at least the running
+ * boot task, so a healthy enumeration yields >= 1 live task; the process count
+ * is a non-negative tally. Returns 0 on a sane snapshot, non-zero if the
+ * iterators report a clearly broken state, so the apps-basic-roundtrip
+ * orchestrator can count it as a clean app pass. Pure: no window, no widgets. */
+int task_manager_smoke_roundtrip(void) {
+  if (task_manager_count_tasks() < 1) return 1;
+  if (task_manager_count_processes() < 0) return 2;
+  return 0;
+}
+
 static uint64_t task_manager_hash_mix(uint64_t h, uint64_t v) {
   h ^= v + 0x9E3779B97F4A7C15ull + (h << 6) + (h >> 2);
   return h;
