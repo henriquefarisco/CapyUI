@@ -60,6 +60,20 @@ static int64_t calc_eval(const char *expr, int len) {
   return result;
 }
 
+/* Etapa 6 / Slice 6.6: headless smoke roundtrip (no GUI/compositor). Exercises
+ * the calculator's primary function (calc_eval) and returns 0 when every
+ * expected result matches, non-zero otherwise, so the apps-basic-roundtrip
+ * orchestrator can count it as a clean app pass. calc_eval is left-to-right
+ * (no operator precedence), so "2+3*4" == 20. Pure: no window, no widgets. */
+int calculator_smoke_roundtrip(void) {
+  if (calc_eval("2+2", 3) != 4) return 1;
+  if (calc_eval("10-3", 4) != 7) return 1;
+  if (calc_eval("6*7", 3) != 42) return 1;
+  if (calc_eval("100/4", 5) != 25) return 1;
+  if (calc_eval("2+3*4", 5) != 20) return 1;
+  return 0;
+}
+
 static void calculator_invalidate_display(struct calculator_app *app) {
   if (!app || !app->window) return;
   if (app->display) {

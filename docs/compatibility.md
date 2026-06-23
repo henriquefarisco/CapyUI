@@ -89,7 +89,15 @@ All 14 pre-1.0 ABI minors (`0.0` through `0.15`, with `0.7` and `0.12` reserved)
   decoration, drag/drop);
 - built-in apps (calculator, file manager, settings, task manager,
   text editor, terminal frontend);
-- shell context activation hooks consumed by `auth/login_runtime`.
+- shell context activation hooks consumed by `auth/login_runtime`;
+- headless apps-basic-roundtrip smoke surface (additive, Etapa 6 / Slice 6.6):
+  `apps_smoke_roundtrip_total()` + `apps_smoke_roundtrip_run(index)` (in
+  `src/apps/apps_smoke.c`), implementing the CapyOS contract
+  `include/apps/apps_smoke.h`. Each `<app>_smoke_roundtrip()` (e.g.
+  `calculator_smoke_roundtrip`) runs an app's primary function headlessly (no
+  window/compositor) and returns 0 on success, so the CapyOS in-kernel
+  orchestrator can count clean passes and emit `[smoke] apps-basic-roundtrip
+  ready`. First milestone: calculator (REQUIRED_APPS=1); grows app-by-app.
 
 The desktop session **does not** ship its own compositor, fonts,
 framebuffer driver, raw input drivers, theme provider, accessibility
