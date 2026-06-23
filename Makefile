@@ -88,7 +88,7 @@ test: $(TEST_BIN)
 lint:
 	$(CC) $(CPPFLAGS) $(CFLAGS) -fsyntax-only $(SRC_WIDGET)
 	git diff --check
-	test "$(VERSION)" = "2.22.2"
+	test "$(VERSION)" = "2.22.3"
 
 security:
 	$(CC) $(CPPFLAGS) $(CFLAGS) -D_FORTIFY_SOURCE=2 -fstack-protector-strong -fPIE -fsyntax-only $(SRC_WIDGET)
@@ -98,7 +98,7 @@ security:
 # definitions must equal the count of call-sites and both must equal the
 # documented total. Bump this number (and the docs) when adding tests.
 version-check:
-	test "$(VERSION)" = "2.22.2"
+	test "$(VERSION)" = "2.22.3"
 	grep -q "Version: 2.22.2" README.md
 	test "$$(grep -cE '^  test_[a-z0-9_]+\(\);' tests/test_widget_contracts.c)" = "348"
 	test "$$(grep -cE '^static void test_[a-z0-9_]+\(void\)' tests/test_widget_contracts.c)" = "348"
