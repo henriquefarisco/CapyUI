@@ -262,6 +262,23 @@ int desktop_runtime_start(struct shell_context *ctx) {
     char ch = 0;
     int had_activity = 0;
 
+    /* Etapa 7 / Slice 7.5 (alpha.309/CapyUI 2.23.1): cada frame do desktop
+     * e uma unidade atomica de escalonamento. Com o scheduler preemptivo
+     * default (policy PRIORITY, APIC 100Hz) e um processo grafico ring-3
+     * vivo (capygfx via kernel_spawn_capygfx_desktop), o tick podia
+     * preemptar esta task NO MEIO de desktop_run_frame/compositor_render;
+     * o capygfx entao mutava a tabela de janelas/surfaces/damage por
+     * syscall (ou o reaper de zumbis do tick destruia janelas em contexto
+     * de IRQ) e, ao retomar a varredura, o compositor lia estado
+     * inconsistente -- o travamento de campo do VMware ("tela toda azul":
+     * so o wallpaper pintado, frame nunca completa). O guard adia APENAS
+     * preempcao por quantum + reaping durante o corpo do frame; os pontos
+     * voluntarios (task_yield/task_sleep logo abaixo) continuam sendo os
+     * unicos lugares onde o capygfx roda -- sempre entre frames, com o
+     * compositor quiescente. IRQs continuam habilitados (input nao perde
+     * eventos; so a troca de contexto e adiada). */
+    scheduler_preempt_disable();
+
     x64_kernel_runtime_poll_background();
 
     while (kernel_input_trygetc(&ch)) {
@@ -314,15 +331,21 @@ int desktop_runtime_start(struct shell_context *ctx) {
         escape_state = 0;
       }
     }
-    if (!g_desktop_active) break;
-    if (desktop_run_frame(&g_desktop)) had_activity = 1;
-    if (g_desktop_smoke_diag_iter_count < DESKTOP_SMOKE_DIAG_DELAY_ITERATIONS) {
-      g_desktop_smoke_diag_iter_count++;
+    if (g_desktop_active) {
+      if (desktop_run_frame(&g_desktop)) had_activity = 1;
+      if (g_desktop_smoke_diag_iter_count < DESKTOP_SMOKE_DIAG_DELAY_ITERATIONS) {
+        g_desktop_smoke_diag_iter_count++;
+      }
+      desktop_gui_session_smoke_emit_once();
+      desktop_mouse_events_smoke_emit_once();
+      desktop_gui_session_smoke_emit_blocked_diagnostic_once();
+      desktop_mouse_events_smoke_emit_blocked_diagnostic_once();
     }
-    desktop_gui_session_smoke_emit_once();
-    desktop_mouse_events_smoke_emit_once();
-    desktop_gui_session_smoke_emit_blocked_diagnostic_once();
-    desktop_mouse_events_smoke_emit_blocked_diagnostic_once();
+    /* Fim da secao atomica do frame: daqui ate o topo do proximo frame o
+     * scheduler volta a poder preemptar/reapear -- task_yield e o ponto
+     * canonico onde o capygfx (e qualquer outra task) roda. */
+    scheduler_preempt_enable();
+    if (!g_desktop_active) break;
     task_yield();
     if (!had_activity && !mouse_pending()) desktop_frame_delay();
   }
