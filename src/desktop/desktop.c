@@ -94,9 +94,20 @@ static void desktop_terminal_key(struct gui_window *win, uint32_t keycode,
   if (!win || !win->user_data) return;
   struct terminal *term = (struct terminal *)win->user_data;
 
-  /* Handle arrow / special keys as keycodes, not chars */
+  /* Special keys scroll the view through the scrollback ring so long
+   * outputs (help-any, logs) stay fully readable: PgUp/PgDn by a page,
+   * Up/Down by a line. Typing any printable snaps back to the live
+   * screen (terminal_handle_key resets scroll_offset). */
   if (keycode >= 0x80) {
-    /* Arrow keys — for now just ignore in terminal (could scroll) */
+    uint32_t page = term->rows > 1u ? term->rows - 1u : 1u;
+    switch (keycode) {
+      case KEY_PGUP: terminal_scroll_up(term, page); break;
+      case KEY_PGDN: terminal_scroll_down(term, page); break;
+      case KEY_UP:   terminal_scroll_up(term, 1u); break;
+      case KEY_DOWN: terminal_scroll_down(term, 1u); break;
+      default: return;
+    }
+    compositor_invalidate(win->id);
     return;
   }
 
@@ -106,6 +117,7 @@ static void desktop_terminal_key(struct gui_window *win, uint32_t keycode,
 static void desktop_terminal_scroll(struct gui_window *win, int32_t delta) {
   if (!win || !win->user_data) return;
   terminal_handle_mouse_scroll((struct terminal *)win->user_data, (int)delta);
+  compositor_invalidate(win->id);
 }
 
 static void desktop_terminal_on_close(struct gui_window *win) {
@@ -266,9 +278,27 @@ static void menu_action_task_manager(void *user_data) {
   register_focused_in_taskbar("Task Manager", "Tasks");
 }
 
-/* Browser menu entry erradicada na sessao 6 (2026-05-05). O
- * browser legado foi removido; o sucessor deve voltar como adaptador
- * versionado na etapa correta. */
+/* Etapa 7 / Slice 7.5: o navegador grafico volta ao menu iniciar como
+ * adaptador versionado — a acao delega ao hook estavel do CapyOS
+ * (kernel_desktop_open_browser_graphical, declarado em
+ * gui/desktop_runtime.h), que faz o spawn ring-3 do capygfx quando o
+ * blob esta embutido e retorna erro caso contrario. Falha nunca e
+ * silenciosa: sem pipeline de notificacao integrado ainda, o feedback
+ * sai no terminal (abrindo-o se preciso). */
+static void menu_action_browser(void *user_data) {
+  (void)user_data;
+  if (kernel_desktop_open_browser_graphical() == 0) return;
+  if (!g_menu_desktop) return;
+  desktop_open_terminal(g_menu_desktop);
+  if (g_menu_desktop->active_terminal) {
+    terminal_write_string(
+        g_menu_desktop->active_terminal,
+        APP_T("\n[navegador] indisponivel neste kernel (blob/module ausente).\n",
+              "\n[browser] unavailable in this kernel (blob/module missing).\n",
+              "\n[navegador] no disponible en este kernel (blob/module ausente).\n"));
+    desktop_terminal_prompt(g_menu_desktop->active_terminal);
+  }
+}
 
 static void menu_action_logout(void *user_data) {
   (void)user_data;
@@ -290,6 +320,105 @@ static void menu_action_shutdown(void *user_data) {
   desktop_stop();
   extern void kernel_request_shutdown(void);
   kernel_request_shutdown();
+}
+
+/* ------------------------------------------------------------------ *
+ * Registro de apps do menu iniciar ("Lista completa").
+ *
+ * Fonte unica dos apps lancaveis do desktop: o modo resumido mostra os
+ * favoritos fixados; "Lista completa" injeta TODOS os apps do registro
+ * na categoria "Apps" (ordenados), inclusive apps entregues por modulo
+ * (Navegador) — a disponibilidade e sondada no clique, entao uma nova
+ * instalacao ja encontra o atalho pronto no menu, sem rebuild da UI.
+ * Novos apps (in-kernel ou de modulo) entram adicionando UMA linha aqui.
+ * ------------------------------------------------------------------ */
+struct desktop_menu_app {
+  const char *label;            /* localizado no momento do registro */
+  void (*action)(void *);
+  int pinned;                   /* favorito no modo resumido */
+};
+
+static int g_menu_show_all = 0;
+
+static void desktop_menu_apps(struct desktop_menu_app *out, uint32_t cap,
+                              uint32_t *count) {
+  uint32_t n = 0;
+  if (!out || cap < 7u) { if (count) *count = 0; return; }
+  out[n].label = APP_T("Arquivos", "Files", "Archivos");
+  out[n].action = menu_action_file_manager; out[n].pinned = 1; n++;
+  out[n].label = APP_T("Calculadora", "Calculator", "Calculadora");
+  out[n].action = menu_action_calculator; out[n].pinned = 1; n++;
+  out[n].label = APP_T("Configuracoes", "Settings", "Ajustes");
+  out[n].action = menu_action_settings; out[n].pinned = 0; n++;
+  out[n].label = APP_T("Editor", "Editor", "Editor");
+  out[n].action = menu_action_text_editor; out[n].pinned = 1; n++;
+  out[n].label = APP_T("Navegador", "Browser", "Navegador");
+  out[n].action = menu_action_browser; out[n].pinned = 1; n++;
+  out[n].label = APP_T("Tarefas", "Tasks", "Tareas");
+  out[n].action = menu_action_task_manager; out[n].pinned = 0; n++;
+  out[n].label = APP_T("Terminal", "Terminal", "Terminal");
+  out[n].action = menu_action_terminal; out[n].pinned = 1; n++;
+  if (count) *count = n;
+}
+
+static void menu_action_toggle_all(void *user_data);
+
+static void desktop_populate_menu(struct desktop_session *ds) {
+  struct desktop_menu_app apps[8];
+  uint32_t app_count = 0;
+  uint32_t i;
+  if (!ds) return;
+  ds->taskbar.menu_entry_count = 0;
+  desktop_menu_apps(apps, 8u, &app_count);
+
+  /* Favoritos fixados (grupo "Pinned"). */
+  for (i = 0; i < app_count; i++) {
+    if (!apps[i].pinned) continue;
+    taskbar_add_menu_entry_pinned(&ds->taskbar, apps[i].label,
+                                  apps[i].action, ds);
+  }
+  /* Lista completa: todos os apps do registro, ja em ordem alfabetica
+   * (grupo "Apps"), atalho pronto inclusive para apps de modulo. */
+  if (g_menu_show_all) {
+    for (i = 0; i < app_count; i++) {
+      taskbar_add_menu_entry(&ds->taskbar, apps[i].label, apps[i].action, ds);
+    }
+  }
+  taskbar_add_menu_separator(&ds->taskbar);
+  taskbar_add_menu_entry(&ds->taskbar,
+                         g_menu_show_all
+                             ? APP_T("Lista resumida", "Compact list",
+                                     "Lista resumida")
+                             : APP_T("Lista completa", "All apps",
+                                     "Lista completa"),
+                         menu_action_toggle_all, ds);
+  taskbar_add_menu_entry(&ds->taskbar,
+                         APP_T("Configuracoes", "Settings", "Ajustes"),
+                         menu_action_settings, ds);
+  taskbar_add_menu_entry(&ds->taskbar,
+                         APP_T("Tarefas", "Tasks", "Tareas"),
+                         menu_action_task_manager, ds);
+  taskbar_add_menu_separator(&ds->taskbar);
+  taskbar_add_menu_entry(&ds->taskbar,
+                         APP_T("Sair", "Logout", "Cerrar sesion"),
+                         menu_action_logout, ds);
+  taskbar_add_menu_entry(&ds->taskbar,
+                         APP_T("Reiniciar", "Reboot", "Reiniciar"),
+                         menu_action_reboot, ds);
+  taskbar_add_menu_entry(&ds->taskbar,
+                         APP_T("Desligar", "Shutdown", "Apagar"),
+                         menu_action_shutdown, ds);
+}
+
+static void menu_action_toggle_all(void *user_data) {
+  struct desktop_session *ds = (struct desktop_session *)user_data;
+  g_menu_show_all = !g_menu_show_all;
+  if (!ds) return;
+  desktop_populate_menu(ds);
+  /* A ativacao ja fechou o popup (taskbar_toggle_menu); reabre com o
+   * novo conjunto de entradas para o toggle parecer in-place. */
+  if (!ds->taskbar.menu_open) taskbar_toggle_menu(&ds->taskbar);
+  compositor_invalidate_all();
 }
 
 void desktop_init(struct desktop_session *ds, uint32_t *fb, uint32_t w,
@@ -340,36 +469,11 @@ void desktop_init(struct desktop_session *ds, uint32_t *fb, uint32_t w,
   /* Etapa F4 i18n (2026-05-03): nomes localizados via APP_T no
    * idioma da sessao ativa. Note: o taskbar copia a string ao
    * adicionar -- mudancas de idioma em runtime so afetam a UI
-   * apos relogin (re-init do desktop). */
-  taskbar_add_menu_entry_pinned(&ds->taskbar,
-                                APP_T("Terminal", "Terminal", "Terminal"),
-                                menu_action_terminal, ds);
-  taskbar_add_menu_entry_pinned(&ds->taskbar,
-                                APP_T("Arquivos", "Files", "Archivos"),
-                                menu_action_file_manager, ds);
-  taskbar_add_menu_entry_pinned(&ds->taskbar,
-                                APP_T("Editor", "Editor", "Editor"),
-                                menu_action_text_editor, ds);
-  taskbar_add_menu_entry_pinned(&ds->taskbar,
-                                APP_T("Calculadora", "Calculator", "Calculadora"),
-                                menu_action_calculator, ds);
-  taskbar_add_menu_separator(&ds->taskbar);
-  taskbar_add_menu_entry(&ds->taskbar,
-                         APP_T("Configuracoes", "Settings", "Ajustes"),
-                         menu_action_settings, ds);
-  taskbar_add_menu_entry(&ds->taskbar,
-                         APP_T("Tarefas", "Tasks", "Tareas"),
-                         menu_action_task_manager, ds);
-  taskbar_add_menu_separator(&ds->taskbar);
-  taskbar_add_menu_entry(&ds->taskbar,
-                         APP_T("Sair", "Logout", "Cerrar sesion"),
-                         menu_action_logout, ds);
-  taskbar_add_menu_entry(&ds->taskbar,
-                         APP_T("Reiniciar", "Reboot", "Reiniciar"),
-                         menu_action_reboot, ds);
-  taskbar_add_menu_entry(&ds->taskbar,
-                         APP_T("Desligar", "Shutdown", "Apagar"),
-                         menu_action_shutdown, ds);
+   * apos relogin (re-init do desktop). O conjunto de entradas vem do
+   * registro unico desktop_menu_apps (modo resumido por padrao; a
+   * entrada "Lista completa" alterna para o catalogo inteiro). */
+  g_menu_show_all = 0;
+  desktop_populate_menu(ds);
 
   desktop_update_tray(ds);
 
@@ -394,8 +498,20 @@ static void desktop_terminal_command(struct terminal *term, const char *data,
   for (i = 0; i < len; i++) line[i] = data[i];
   line[len] = '\0';
 
+  /* `exit` closes ONLY this terminal window (like the title-bar X), never
+   * the whole desktop session -- tearing the session down on a shell
+   * reflex command was a repeated operator complaint. Leaving the desktop
+   * remains explicit: the launcher's Logout entry or the shell `bye`. */
   if (kstreq(line, "exit")) {
-    desktop_stop();
+    struct gui_window *win = term->window;
+    if (win) {
+      if (g_menu_desktop)
+        taskbar_remove_window(&g_menu_desktop->taskbar, win->id);
+      /* compositor_destroy_window runs win->on_close
+       * (desktop_terminal_on_close) exactly once, which detaches the
+       * shell sink and clears g_terminal_open. */
+      compositor_destroy_window(win->id);
+    }
     return;
   }
 
@@ -466,8 +582,11 @@ void desktop_open_terminal(struct desktop_session *ds) {
                        compositor_theme()->terminal_bg);
     terminal_clear(&g_desktop_terminal);
     terminal_write_string(&g_desktop_terminal, "CapyOS Desktop Terminal\n");
-    terminal_write_string(&g_desktop_terminal, "Type 'exit' to return to CLI.\n");
-    terminal_write_string(&g_desktop_terminal, "Type 'bye' to log out.\n\n");
+    terminal_write_string(&g_desktop_terminal,
+                          "Type 'exit' to close this terminal window.\n");
+    terminal_write_string(&g_desktop_terminal, "Type 'bye' to log out.\n");
+    terminal_write_string(&g_desktop_terminal,
+                          "Scroll: mouse wheel / PgUp / PgDn.\n\n");
     desktop_terminal_prompt(&g_desktop_terminal);
     terminal_set_output_callback(&g_desktop_terminal, desktop_terminal_command, NULL);
     win->user_data = &g_desktop_terminal;
