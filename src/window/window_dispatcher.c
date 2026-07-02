@@ -2,6 +2,7 @@
 
 #include "drivers/input/mouse.h"
 #include "gui/compositor.h"
+#include "gui/event.h"
 
 static struct gui_window_dispatcher_stats dispatcher_stats;
 static uint32_t captured_mouse_window_id;
@@ -344,9 +345,60 @@ int gui_window_dispatcher_health_snapshot(struct gui_window_dispatcher_health *o
   return 1;
 }
 
+/* Etapa 7 / Slice 7.5 (alpha.305): windows created via the ring-3 graphical
+ * syscall ABI (kernel/syscall_gfx_init.c's gfx_backend_win_create) mark
+ * `win->gfx_owner_pid != 0` and never populate on_mouse/on_key/on_scroll (they
+ * have no kernel-side callback to call into -- the owning process drains
+ * SYS_WINDOW_POLL_EVENT in ring 3 instead). For such a window, re-push the
+ * event onto the SAME queue (gui_event_push) with `window_id` set explicitly
+ * to the target window, instead of falling through to the normal
+ * on_mouse/on_key dispatch (which would just no-op on the missing callback
+ * and count as "missing_handler"). This is the bridge: the real desktop's
+ * raw-input path (desktop_mouse.c / desktop.c) already funnels every
+ * key/mouse event through gui_window_dispatch_event, so calling this at the
+ * top of that one central choke point is enough to reach every input event
+ * without touching each call site individually. Window lifecycle events
+ * (CLOSE/RESIZE/FOCUS/BLUR/PAINT/TIMER) already reach the queue directly from
+ * compositor.c's own gui_event_push_window_* calls and need no help here. */
+static int gfx_owned_redirect(const struct gui_event *ev) {
+  struct gui_window *win = NULL;
+  struct gui_event out;
+
+  switch (ev->type) {
+    case GUI_EVENT_KEY_DOWN:
+    case GUI_EVENT_KEY_UP:
+      win = dispatcher_target_window(ev, 1);
+      break;
+    case GUI_EVENT_MOUSE_MOVE:
+    case GUI_EVENT_MOUSE_DOWN:
+    case GUI_EVENT_MOUSE_UP:
+    case GUI_EVENT_MOUSE_SCROLL:
+      win = (captured_mouse_window_id != 0)
+                ? compositor_get_window(captured_mouse_window_id)
+                : dispatcher_mouse_target(ev);
+      break;
+    default:
+      return 0;
+  }
+  if (!win || win->gfx_owner_pid == 0u || !window_can_receive_event(win))
+    return 0;
+
+  out = *ev;
+  out.window_id = win->id;
+  (void)gui_event_push(&out);
+  /* A mouse-down on a gfx-owned window should still gain focus, mirroring
+   * dispatch_mouse_button's behavior for in-kernel app windows -- otherwise a
+   * click on the graphical browser window would neither run its own logic
+   * (it can't; it is ring-3) nor raise it to the front. */
+  if (ev->type == GUI_EVENT_MOUSE_DOWN) compositor_focus_window(win->id);
+  dispatcher_stats.handled_total++;
+  return 1;
+}
+
 int gui_window_dispatch_event(const struct gui_event *ev) {
   if (!ev) return 0;
   dispatcher_stats.dispatched_total++;
+  if (gfx_owned_redirect(ev)) return 1;
   switch (ev->type) {
     case GUI_EVENT_KEY_DOWN:
       return dispatch_key_down(ev);
