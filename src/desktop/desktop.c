@@ -61,13 +61,9 @@ static void desktop_terminal_prompt(struct terminal *term) {
 
 static void desktop_shell_begin_terminal_output(struct terminal *term) {
   g_shell_output_term = term;
-  shell_set_output_callbacks(desktop_shell_write, desktop_shell_putc);
-  shell_set_clear_callback(desktop_shell_clear);
 }
 
 static void desktop_shell_end_terminal_output(void) {
-  shell_set_output_callbacks(NULL, NULL);
-  shell_set_clear_callback(NULL);
   g_shell_output_term = NULL;
 }
 
@@ -300,6 +296,11 @@ static void menu_action_browser(void *user_data) {
   }
 }
 
+static void menu_action_capyai(void *user_data) {
+  (void)user_data;
+  (void)desktop_launch_capyai();
+}
+
 static void menu_action_logout(void *user_data) {
   (void)user_data;
   extern void desktop_stop(void);
@@ -343,7 +344,7 @@ static int g_menu_show_all = 0;
 static void desktop_menu_apps(struct desktop_menu_app *out, uint32_t cap,
                               uint32_t *count) {
   uint32_t n = 0;
-  if (!out || cap < 7u) { if (count) *count = 0; return; }
+  if (!out || cap < 8u) { if (count) *count = 0; return; }
   out[n].label = APP_T("Arquivos", "Files", "Archivos");
   out[n].action = menu_action_file_manager; out[n].pinned = 1; n++;
   out[n].label = APP_T("Calculadora", "Calculator", "Calculadora");
@@ -354,6 +355,8 @@ static void desktop_menu_apps(struct desktop_menu_app *out, uint32_t cap,
   out[n].action = menu_action_text_editor; out[n].pinned = 1; n++;
   out[n].label = APP_T("Navegador", "Browser", "Navegador");
   out[n].action = menu_action_browser; out[n].pinned = 1; n++;
+  out[n].label = "CapyAI";
+  out[n].action = menu_action_capyai; out[n].pinned = 1; n++;
   out[n].label = APP_T("Tarefas", "Tasks", "Tareas");
   out[n].action = menu_action_task_manager; out[n].pinned = 0; n++;
   out[n].label = APP_T("Terminal", "Terminal", "Terminal");
@@ -521,15 +524,27 @@ static void desktop_terminal_command(struct terminal *term, const char *data,
     return;
   }
 
-  desktop_shell_begin_terminal_output(term);
-  if (!kernel_desktop_dispatch_shell_command(line)) {
+  {
+    int dispatch_status;
+    desktop_shell_begin_terminal_output(term);
+    dispatch_status = kernel_desktop_dispatch_shell_command_scoped(
+        NULL, line, NULL, 0, desktop_shell_write, desktop_shell_putc,
+        desktop_shell_clear);
     desktop_shell_end_terminal_output();
-    terminal_write_string(term, "[erro] comando desconhecido\n");
-    terminal_write_string(term, "Use help-any para listar comandos.\n");
-    desktop_terminal_prompt(term);
-    return;
+    if (dispatch_status == DESKTOP_SHELL_DISPATCH_BUSY) {
+      terminal_write_string(term,
+                            "[ocupado] CapyAI esta executando um comando; "
+                            "tente novamente.\n");
+      desktop_terminal_prompt(term);
+      return;
+    }
+    if (dispatch_status != DESKTOP_SHELL_DISPATCH_HANDLED) {
+      terminal_write_string(term, "[erro] comando desconhecido\n");
+      terminal_write_string(term, "Use help-any para listar comandos.\n");
+      desktop_terminal_prompt(term);
+      return;
+    }
   }
-  desktop_shell_end_terminal_output();
   if (kernel_desktop_shell_should_stop()) {
     desktop_stop();
     return;

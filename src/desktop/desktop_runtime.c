@@ -1,5 +1,6 @@
 #include "gui/desktop_runtime.h"
 #include "gui/desktop.h"
+#include "apps/capyai_chat.h"
 #include "arch/x86_64/framebuffer_console.h"
 #include "drivers/input/mouse.h"
 #include "drivers/input/keyboard_layout.h"
@@ -15,8 +16,17 @@
 #include "net/stack.h"
 #include <stddef.h>
 
+static struct task *g_desktop_task = (struct task *)0;
+
 static void desktop_net_yield(void) {
   struct mouse_state ms;
+  /* Network operations may run on the CapyAI worker. Only the foreground
+   * desktop task is allowed to touch the compositor; workers yield back and
+   * let the next normal frame refresh the cursor. */
+  if (task_current() != g_desktop_task) {
+    task_yield();
+    return;
+  }
   mouse_get_state(&ms);
   compositor_render_cursor(ms.x, ms.y);
 }
@@ -36,9 +46,11 @@ static void desktop_present_initial_frame(struct desktop_session *ds) {
 static struct desktop_session g_desktop;
 static int g_desktop_active = 0;
 static struct shell_context *g_desktop_shell_ctx = NULL;
+static volatile int g_desktop_shell_dispatch_busy = 0;
+static int g_desktop_stop_pending = 0;
 static int g_reboot_requested = 0;
 static int g_shutdown_requested = 0;
-static struct task *g_desktop_task = (struct task *)0;
+static int g_capyai_launch_pending = 0;
 static int g_desktop_gui_session_smoke_announced = 0;
 static int g_desktop_mouse_events_smoke_announced = 0;
 /* Blocked-state diagnostic emitted at most once per gate, only after the
@@ -52,22 +64,86 @@ static uint32_t g_desktop_smoke_diag_iter_count = 0;
 
 int desktop_is_active(void) { return g_desktop_active; }
 
-int kernel_desktop_dispatch_shell_command(char *line) {
+int kernel_desktop_dispatch_shell_command_scoped(
+    struct shell_context *ctx, char *line, int *out_rc, int wait_if_busy,
+    shell_output_write_fn write_cb, shell_output_putc_fn putc_cb,
+    shell_output_clear_fn clear_cb) {
   struct session_context *previous_session = NULL;
   struct session_context *desktop_session = NULL;
   int handled = 0;
-  if (!g_desktop_shell_ctx || !line) return 0;
+  if (!line) return DESKTOP_SHELL_DISPATCH_UNKNOWN;
+  if (!ctx) ctx = g_desktop_shell_ctx;
+  if (!ctx) return DESKTOP_SHELL_DISPATCH_UNKNOWN;
+
+  while (__sync_lock_test_and_set(&g_desktop_shell_dispatch_busy, 1)) {
+    if (!wait_if_busy) return DESKTOP_SHELL_DISPATCH_BUSY;
+    task_yield();
+  }
+
   previous_session = session_active();
-  desktop_session = shell_context_session(g_desktop_shell_ctx);
-  if (desktop_session) session_set_active(desktop_session);
-  handled = x64_kernel_try_shell_command(g_desktop_shell_ctx, 1, line);
+  desktop_session = shell_context_session(ctx);
+  if (ctx == g_desktop_shell_ctx && desktop_session) {
+    session_set_active(desktop_session);
+  }
+  shell_set_output_callbacks(write_cb, putc_cb);
+  shell_set_clear_callback(clear_cb);
+  handled = x64_kernel_try_shell_command_result(ctx, 1, line, out_rc);
+  shell_set_output_callbacks(NULL, NULL);
+  shell_set_clear_callback(NULL);
   session_set_active(previous_session);
-  return handled;
+  __sync_lock_release(&g_desktop_shell_dispatch_busy);
+  return handled ? DESKTOP_SHELL_DISPATCH_HANDLED
+                 : DESKTOP_SHELL_DISPATCH_UNKNOWN;
+}
+
+int kernel_desktop_dispatch_shell_command_result(char *line, int *out_rc) {
+  return kernel_desktop_dispatch_shell_command_scoped(
+      NULL, line, out_rc, 0, NULL, NULL, NULL) ==
+         DESKTOP_SHELL_DISPATCH_HANDLED;
+}
+
+int kernel_desktop_dispatch_shell_command(char *line) {
+  return kernel_desktop_dispatch_shell_command_result(line, (int *)0);
+}
+
+int desktop_launch_capyai(void) {
+  struct gui_window *win;
+  if (!g_desktop_active) {
+    g_capyai_launch_pending = 1;
+    return 0;
+  }
+  if (capyai_chat_open() != 0) {
+    if (g_desktop.active_terminal) {
+      terminal_write_string(g_desktop.active_terminal,
+                            "\n[capyai] falha ao alocar a janela; "
+                            "memoria grafica insuficiente.\n");
+      compositor_invalidate(g_desktop.active_terminal->window->id);
+    }
+    return -1;
+  }
+  win = compositor_focused_window();
+  if (win && win->id) {
+    taskbar_add_window(&g_desktop.taskbar, win->id, "CapyAI");
+    taskbar_set_focused(&g_desktop.taskbar, win->id);
+  }
+  return 0;
 }
 
 struct session_context *kernel_desktop_shell_session(void) {
   if (!g_desktop_shell_ctx) return NULL;
   return shell_context_session(g_desktop_shell_ctx);
+}
+
+int kernel_desktop_shell_snapshot(struct shell_context *out_ctx,
+                                  struct session_context *out_session) {
+  struct session_context *source;
+  if (!out_ctx || !out_session || !g_desktop_shell_ctx) return -1;
+  source = shell_context_session(g_desktop_shell_ctx);
+  if (!source) return -1;
+  *out_session = *source;
+  shell_context_init(out_ctx, out_session,
+                     shell_context_settings(g_desktop_shell_ctx));
+  return 0;
 }
 
 int kernel_desktop_shell_should_logout(void) {
@@ -83,7 +159,11 @@ int kernel_desktop_shell_should_stop(void) {
 
 void desktop_stop(void) {
   if (g_desktop_active) {
-    g_desktop_active = 0;
+    if (capyai_chat_busy()) {
+      g_desktop_stop_pending = 1;
+    } else {
+      g_desktop_active = 0;
+    }
   }
 }
 
@@ -125,6 +205,7 @@ static void desktop_scheduler_entry(void *arg) {
 
 static int desktop_scheduler_adopt_current(void) {
   if (task_current()) {
+    g_desktop_task = task_current();
     scheduler_set_running(1);
     return 0;
   }
@@ -237,6 +318,7 @@ int desktop_runtime_start(struct shell_context *ctx) {
   g_desktop_gui_session_smoke_diag_emitted = 0;
   g_desktop_mouse_events_smoke_diag_emitted = 0;
   g_desktop_smoke_diag_iter_count = 0;
+  g_desktop_stop_pending = 0;
   g_desktop_shell_ctx = ctx;
   if (ctx && shell_context_session(ctx)) {
     session_set_active(shell_context_session(ctx));
@@ -247,11 +329,19 @@ int desktop_runtime_start(struct shell_context *ctx) {
     fbcon_print("Error: desktop scheduler unavailable.\n");
     return -1;
   }
+  (void)capyai_chat_runtime_init();
   net_stack_set_yield_hook(desktop_net_yield);
   desktop_present_initial_frame(&g_desktop);
   fbcon_set_visual_muted(1);
   fbcon_print("[desktop] session started\n");
   g_desktop_active = 1;
+  if (g_capyai_launch_pending) {
+    g_capyai_launch_pending = 0;
+    (void)desktop_launch_capyai();
+  }
+#ifdef CAPYOS_CAPYAI_GUI_ASYNC_SMOKE
+  (void)capyai_chat_smoke_start();
+#endif
 
   /* Small state machine to distinguish a bare ESC press (exit desktop)
    * from a VT100 arrow-key escape sequence (ESC [ A/B/C/D).
@@ -333,6 +423,9 @@ int desktop_runtime_start(struct shell_context *ctx) {
     }
     if (g_desktop_active) {
       if (desktop_run_frame(&g_desktop)) had_activity = 1;
+#ifdef CAPYOS_CAPYAI_GUI_ASYNC_SMOKE
+      capyai_chat_smoke_note_frame();
+#endif
       if (g_desktop_smoke_diag_iter_count < DESKTOP_SMOKE_DIAG_DELAY_ITERATIONS) {
         g_desktop_smoke_diag_iter_count++;
       }
@@ -345,6 +438,13 @@ int desktop_runtime_start(struct shell_context *ctx) {
      * scheduler volta a poder preemptar/reapear -- task_yield e o ponto
      * canonico onde o capygfx (e qualquer outra task) roda. */
     scheduler_preempt_enable();
+    /* CapyAI submission happens inside on_key, but execution is deliberately
+     * deferred until after the frame guard is released. */
+    capyai_chat_pump();
+    if (g_desktop_stop_pending && !capyai_chat_busy()) {
+      g_desktop_stop_pending = 0;
+      g_desktop_active = 0;
+    }
     if (!g_desktop_active) break;
     task_yield();
     if (!had_activity && !mouse_pending()) desktop_frame_delay();
@@ -355,6 +455,7 @@ int desktop_runtime_start(struct shell_context *ctx) {
   fbcon_set_visual_muted(0);
   fbcon_print("[desktop] session stopped\n");
   g_desktop_active = 0;
+  g_desktop_stop_pending = 0;
   g_desktop_shell_ctx = NULL;
   session_set_active(previous_session);
 
@@ -375,3 +476,13 @@ int desktop_runtime_start(struct shell_context *ctx) {
 
   return 0;
 }
+
+#ifdef CAPYOS_CAPYAI_GUI_ASYNC_SMOKE
+int desktop_capyai_gui_async_smoke_run(void) {
+  struct session_context session;
+  struct shell_context shell;
+  session_reset(&session);
+  shell_context_init(&shell, &session, NULL);
+  return desktop_runtime_start(&shell);
+}
+#endif

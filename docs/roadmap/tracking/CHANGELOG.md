@@ -2,6 +2,17 @@
 
 Mudanças por release tag, da mais recente para a mais antiga. Cada entrada é imutável após release.
 
+## [2.24.0] — 2026-07-12
+
+**Estabilidade do desktop:** o chat CapyAI deixa de executar inferência na task gráfica e passa a usar o serviço assíncrono persistente do CapyOS.
+
+### Corrigido
+
+- Fechar e reabrir o chat invalida a geração antiga sem manter referências de janela obsoletas.
+- O desktop continua renderizando enquanto a resposta é processada; o resultado chega por polling não bloqueante.
+- A integração usa saída limitada e snapshot da sessão, eliminando concorrência sobre buffers globais.
+- O gate QEMU cobre frames concorrentes e quatro ciclos de fechar/reabrir o chat.
+
 ## [2.22.2] — 2026-06-22
 
 **Aditivo (in-tree):** busca de widget por id (`capy_widget_find_by_id`), pura/aditiva sobre a ABI capy-ui-widget v2.22.
