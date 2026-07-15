@@ -14,6 +14,7 @@
 #include "kernel/scheduler.h"
 #include "kernel/task.h"
 #include "net/stack.h"
+#include "services/capyai_system_actions.h"
 #include <stddef.h>
 
 static struct task *g_desktop_task = (struct task *)0;
@@ -74,6 +75,8 @@ int kernel_desktop_dispatch_shell_command_scoped(
   if (!line) return DESKTOP_SHELL_DISPATCH_UNKNOWN;
   if (!ctx) ctx = g_desktop_shell_ctx;
   if (!ctx) return DESKTOP_SHELL_DISPATCH_UNKNOWN;
+  desktop_session = shell_context_session(ctx);
+  if (!desktop_session) return DESKTOP_SHELL_DISPATCH_UNKNOWN;
 
   while (__sync_lock_test_and_set(&g_desktop_shell_dispatch_busy, 1)) {
     if (!wait_if_busy) return DESKTOP_SHELL_DISPATCH_BUSY;
@@ -81,10 +84,7 @@ int kernel_desktop_dispatch_shell_command_scoped(
   }
 
   previous_session = session_active();
-  desktop_session = shell_context_session(ctx);
-  if (ctx == g_desktop_shell_ctx && desktop_session) {
-    session_set_active(desktop_session);
-  }
+  session_set_active(desktop_session);
   shell_set_output_callbacks(write_cb, putc_cb);
   shell_set_clear_callback(clear_cb);
   handled = x64_kernel_try_shell_command_result(ctx, 1, line, out_rc);
@@ -94,6 +94,31 @@ int kernel_desktop_dispatch_shell_command_scoped(
   __sync_lock_release(&g_desktop_shell_dispatch_busy);
   return handled ? DESKTOP_SHELL_DISPATCH_HANDLED
                  : DESKTOP_SHELL_DISPATCH_UNKNOWN;
+}
+
+int kernel_desktop_run_session_operation_scoped(
+    struct shell_context *ctx, desktop_session_operation_fn operation,
+    void *operation_ctx, int wait_if_busy, int *out_rc) {
+  struct session_context *previous_session = NULL;
+  struct session_context *operation_session = NULL;
+  int rc;
+  if (!operation) return DESKTOP_SHELL_DISPATCH_UNKNOWN;
+  if (!ctx) ctx = g_desktop_shell_ctx;
+  if (!ctx) return DESKTOP_SHELL_DISPATCH_UNKNOWN;
+  operation_session = shell_context_session(ctx);
+  if (!operation_session) return DESKTOP_SHELL_DISPATCH_UNKNOWN;
+
+  while (__sync_lock_test_and_set(&g_desktop_shell_dispatch_busy, 1)) {
+    if (!wait_if_busy) return DESKTOP_SHELL_DISPATCH_BUSY;
+    task_yield();
+  }
+  previous_session = session_active();
+  session_set_active(operation_session);
+  rc = operation(operation_ctx);
+  session_set_active(previous_session);
+  __sync_lock_release(&g_desktop_shell_dispatch_busy);
+  if (out_rc) *out_rc = rc;
+  return DESKTOP_SHELL_DISPATCH_HANDLED;
 }
 
 int kernel_desktop_dispatch_shell_command_result(char *line, int *out_rc) {
@@ -141,6 +166,15 @@ int kernel_desktop_shell_snapshot(struct shell_context *out_ctx,
   source = shell_context_session(g_desktop_shell_ctx);
   if (!source) return -1;
   *out_session = *source;
+  /* The worker only needs the authorization principal, cwd and preferences.
+   * Never retain password-verifier material in the service-owned snapshot. */
+  for (size_t i = 0u; i < sizeof(out_session->user.salt); ++i)
+    out_session->user.salt[i] = 0u;
+  for (size_t i = 0u; i < sizeof(out_session->user.hash); ++i)
+    out_session->user.hash[i] = 0u;
+  out_session->user.algo_id = 0u;
+  out_session->user.algo_t_cost = 0u;
+  out_session->user.algo_m_cost = 0u;
   shell_context_init(out_ctx, out_session,
                      shell_context_settings(g_desktop_shell_ctx));
   return 0;
@@ -165,6 +199,23 @@ void desktop_stop(void) {
       g_desktop_active = 0;
     }
   }
+}
+
+int desktop_request_logout(void) {
+  /* desktop_stop() alone returns control to the command dispatcher with the
+   * authenticated shell still alive, exposing the text shell. Marking the
+   * owning shell context for logout makes login_runtime reset the session and
+   * render the login screen as soon as desktop_runtime_start() returns. */
+  if (!g_desktop_active || !g_desktop_shell_ctx) return -1;
+  shell_request_logout(g_desktop_shell_ctx);
+  desktop_stop();
+  return 0;
+}
+
+int desktop_open_terminal_window(void) {
+  if (!g_desktop_active) return -1;
+  desktop_open_terminal(&g_desktop);
+  return compositor_find_window_by_title("Terminal") ? 0 : -1;
 }
 
 static void sync_and_flush_desktop(void) {
@@ -327,11 +378,19 @@ int desktop_runtime_start(struct shell_context *ctx) {
   desktop_open_terminal(&g_desktop);
   if (desktop_scheduler_adopt_current() != 0) {
     fbcon_print("Error: desktop scheduler unavailable.\n");
+    desktop_shutdown(&g_desktop);
+    g_desktop_shell_ctx = NULL;
+    session_set_active(previous_session);
     return -1;
+  }
+  if (ctx && shell_context_session(ctx)) {
+    session_set_active(shell_context_session(ctx));
   }
   (void)capyai_chat_runtime_init();
   net_stack_set_yield_hook(desktop_net_yield);
+  scheduler_preempt_disable();
   desktop_present_initial_frame(&g_desktop);
+  scheduler_preempt_enable();
   fbcon_set_visual_muted(1);
   fbcon_print("[desktop] session started\n");
   g_desktop_active = 1;
@@ -422,6 +481,11 @@ int desktop_runtime_start(struct shell_context *ctx) {
       }
     }
     if (g_desktop_active) {
+      /* App open/close requested by a CapyAI worker is executed only here,
+       * on the desktop task and inside the compositor's frame guard. This
+       * keeps workers away from mutable window state while still allowing
+       * them to wait for a bounded, observable result. */
+      if (capyai_system_actions_pump() > 0) had_activity = 1;
       if (desktop_run_frame(&g_desktop)) had_activity = 1;
 #ifdef CAPYOS_CAPYAI_GUI_ASYNC_SMOKE
       capyai_chat_smoke_note_frame();

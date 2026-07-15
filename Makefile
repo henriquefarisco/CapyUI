@@ -1,4 +1,4 @@
-# CapyUI Makefile — 2.24.0 — async CapyAI desktop session; ABI capy-ui-widget remains 2.22
+# CapyUI Makefile — 2.24.1 — async CapyAI desktop session; ABI capy-ui-widget remains 2.22
 #
 # CapyUI owns and publishes its own capypkg modules. The build does NOT
 # touch CapyOS sources. After the alpha.241 migration the desktop session
@@ -70,8 +70,10 @@ MODULES_INDEX := $(CAPY_PKG_DIR)/modules-index.txt
 MODULE_INDEX_MANIFESTS := $(WIDGET_PKG_MANIFEST) $(DESKTOP_PKG_MANIFEST)
 
 .PHONY: all clean lint security test validate version-check check-decoupling \
-        lint-desktop-session \
+        lint-desktop-session FORCE_PACKAGE \
         package package-widget-core package-desktop-session package-index package-clean
+
+FORCE_PACKAGE:
 
 all: test
 
@@ -84,11 +86,12 @@ $(TEST_BIN): $(SRC_WIDGET) tests/test_widget_contracts.c | $(BUILD_DIR)
 
 test: $(TEST_BIN)
 	$(TEST_BIN)
+	python3 tests/test_desktop_logout_contract.py
 
 lint:
 	$(CC) $(CPPFLAGS) $(CFLAGS) -fsyntax-only $(SRC_WIDGET)
 	git diff --check
-	test "$(VERSION)" = "2.24.0"
+	test "$(VERSION)" = "2.24.1"
 
 security:
 	$(CC) $(CPPFLAGS) $(CFLAGS) -D_FORTIFY_SOURCE=2 -fstack-protector-strong -fPIE -fsyntax-only $(SRC_WIDGET)
@@ -98,8 +101,8 @@ security:
 # definitions must equal the count of call-sites and both must equal the
 # documented total. Bump this number (and the docs) when adding tests.
 version-check:
-	test "$(VERSION)" = "2.24.0"
-	grep -q "Version: 2.24.0" README.md
+	test "$(VERSION)" = "2.24.1"
+	grep -q "Version: 2.24.1" README.md
 	test "$$(grep -cE '^  test_[a-z0-9_]+\(\);' tests/test_widget_contracts.c)" = "348"
 	test "$$(grep -cE '^static void test_[a-z0-9_]+\(void\)' tests/test_widget_contracts.c)" = "348"
 
@@ -143,12 +146,11 @@ package: package-widget-core package-desktop-session package-index
 # ── widget-core (always available) ─────────────────────────────────────────
 package-widget-core: $(WIDGET_PKG_MANIFEST)
 
-$(WIDGET_PKG_BIN): $(SRC_WIDGET) | $(BUILD_DIR)
+$(WIDGET_PKG_BIN): FORCE_PACKAGE $(SRC_WIDGET) VERSION Makefile | $(BUILD_DIR)
 	@mkdir -p $(CAPY_PKG_DIR)
 	@tar --format=ustar --owner=0 --group=0 --numeric-owner \
 	     --mtime='@0' --sort=name \
-	     -cf $@ src/widget docs VERSION 2>/dev/null || \
-	  tar -cf $@ src/widget docs VERSION
+	     -cf $@ src/widget docs VERSION
 	@echo "[package] $@"
 
 $(WIDGET_PKG_MANIFEST): $(WIDGET_PKG_BIN)
@@ -172,12 +174,11 @@ $(WIDGET_PKG_MANIFEST): $(WIDGET_PKG_BIN)
 # ── desktop-session (CapyUI in-tree, alpha.241 migration) ─────────────────
 package-desktop-session: $(DESKTOP_PKG_MANIFEST)
 
-$(DESKTOP_PKG_BIN): | $(BUILD_DIR)
+$(DESKTOP_PKG_BIN): FORCE_PACKAGE VERSION Makefile | $(BUILD_DIR)
 	@mkdir -p $(CAPY_PKG_DIR)
 	@tar --format=ustar --owner=0 --group=0 --numeric-owner \
 	     --mtime='@0' --sort=name \
-	     -cf $@ src/desktop src/window src/apps docs VERSION 2>/dev/null || \
-	  tar -cf $@ src/desktop src/window src/apps docs VERSION
+	     -cf $@ src/desktop src/window src/apps docs VERSION
 	@echo "[package] $@"
 
 $(DESKTOP_PKG_MANIFEST): $(DESKTOP_PKG_BIN)

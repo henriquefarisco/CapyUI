@@ -16,7 +16,7 @@ and must not call CapyOS compositor internals directly.
 
 ## CapyOS reference version
 
-- CapyOS core pinned for this contract: `0.8.0-alpha.312+20260712`.
+- CapyOS core pinned for this contract: `0.8.0-alpha.315+20260715`.
 - Authoritative cross-repo matrix: [`CapyOS/docs/reference/integration/compatibility-matrix.md`](../../CapyOS/docs/reference/integration/compatibility-matrix.md).
 - Canonical manifest format consumed by the in-tree adapter: [`CapyOS/docs/reference/integration/capypkg-publisher-manifest-format.md`](../../CapyOS/docs/reference/integration/capypkg-publisher-manifest-format.md).
 - Manual deploy runbook: [`CapyOS/docs/operations/manual-module-deploy-runbook.md`](../../CapyOS/docs/operations/manual-module-deploy-runbook.md).
@@ -43,6 +43,11 @@ Roadmap: see `docs/roadmap/README.md`. Current state: see `docs/roadmap/STATUS.m
 |---|---|---|---|---|
 | `capy-ui-widget` | **`v2.22` (additive over 2.21; fase 2.x major completa 14/14; advanced-widget state track complete 8/8; multi-touch gestures (pinch + rotate) since 2.22; 1.x em LTS ≥12m)** | Delivered | `org.capyos.ui.widget-core` | Linked statically by `org.capyos.ui.desktop-session` and any future CapyUI consumer. The 1.0 baseline (= union of pre-1.0 minors 0.0..0.15) was frozen; 1.x minors add fields/APIs without removing or renaming. Deprecation policy in `docs/roadmap/contracts/deprecation-policy.md`. |
 | `capy-ui-desktop-session` | `v1` (delivered in `alpha.241`) | Delivered | `org.capyos.ui.desktop-session` | Consumed by CapyOS `kernel/module_gate.c` via marker `/var/capypkg/org.capyos.ui.desktop-session/installed`. When present, CapyOS activates desktop runtime; when absent, kernel keeps shell-only mode |
+
+Package release `2.24.1` hardens desktop-session v1 without changing either
+ABI: graphical logout returns to login, service workers start without inherited
+principals, scoped legacy/typed dispatch binds the caller-owned sanitized
+session, and the first compositor frame is protected by the scheduler guard.
 
 ### `capy-ui-widget` v2.22 covers (additive over 2.21; fase 2.x major completa 14/14; 2.14–2.21 advanced-widget state complete 8/8; 2.22 multi-touch gestures (pinch + rotate); 1.x em LTS ≥12m)
 

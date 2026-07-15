@@ -11,8 +11,9 @@ CapyUI is the portable widget core and desktop session for CapyOS. Since `v1.0.0
 
 ## Supported versions
 
-- `1.x` is the current stable line and receives security fixes for **≥12 months** after `2.0.0` is released (LTS commitment per `docs/roadmap/contracts/deprecation-policy.md`).
-- `0.x` pre-1.0 lines are unsupported except via the CapyOS host-side compatibility adapter; consumers should upgrade to `1.x`.
+- `2.x` is the current additive line.
+- `1.x` remains LTS and receives security fixes for **≥12 months** after `2.0.0` (commitment per `docs/roadmap/contracts/deprecation-policy.md`).
+- `0.x` pre-1.0 lines are unsupported except via the CapyOS host-side compatibility adapter; consumers should upgrade to a supported line.
 - `capy-ui-desktop-session v1` follows the same LTS window aligned to its host CapyOS Etapa.
 
 ## Release gate
@@ -29,4 +30,4 @@ The CapyUI Makefile compiles the widget core with `-Wall -Wextra -Werror -pedant
 
 ## Supply chain
 
-Releases are signed via the CapyOS Ed25519 signer (currently pinned NULL during the alpha streaming-buffer window per `docs/compatibility.md`). When the signer becomes available, `org.capyos.ui.widget-core` and `org.capyos.ui.desktop-session` manifests will publish `signature_ed25519` over the canonical descriptor `name=N|version=V|payload_sha256=H|payload_url=U\n`. Until then, kernel-space module installation runs `--unsigned` only in lab environments.
+The CapyAgent Ed25519 signer and the CapyOS verifier adapter exist, but production trust remains fail-closed until the publisher public key is pinned and the external known-answer test passes. At that promotion point, `org.capyos.ui.widget-core` and `org.capyos.ui.desktop-session` manifests will publish `signature_ed25519` over the canonical descriptor `name=N|version=V|payload_sha256=H|payload_url=U\n`. Until then, unsigned installation is restricted to lab environments.

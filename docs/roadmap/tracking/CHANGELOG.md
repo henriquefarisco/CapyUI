@@ -2,6 +2,30 @@
 
 Mudanças por release tag, da mais recente para a mais antiga. Cada entrada é imutável após release.
 
+## [2.24.1] — 2026-07-15
+
+**Hardening de sessão do desktop:** corrige a regressão de build que fazia a
+variante de smoke encerrar o desktop e fecha a retenção de principal em workers
+persistentes. As ABIs `capy-ui-widget` 2.22 e `capy-ui-desktop-session` v1, além
+do display-list schema 7, permanecem inalteradas.
+
+### Corrigido
+
+- Logout durante autostart retorna diretamente ao login, sem expor o shell.
+- Workers de serviço começam sem sessão herdada; cada dispatch legacy ou tipado
+  exige e vincula o snapshot sanitizado do caller, restaurando a identidade
+  anterior ao terminar.
+- A adoção da task gráfica religa a sessão autenticada e o primeiro frame roda
+  dentro do guard de preempção.
+- Falha ao adotar o scheduler desfaz compositor e sessão parcialmente iniciados.
+- O contrato de logout passou a ser standalone no checkout CapyUI e valida
+  session binding, guard do primeiro frame e rollback de inicialização.
+
+### Supply chain
+
+- GitHub Actions pinadas por SHA; packaging limpo e tag/version gateados antes da
+  publicação coordenada com CapyOS alpha.315 e CapyAI 0.2.0.
+
 ## [2.24.0] — 2026-07-12
 
 **Estabilidade do desktop:** o chat CapyAI deixa de executar inferência na task gráfica e passa a usar o serviço assíncrono persistente do CapyOS.

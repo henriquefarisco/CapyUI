@@ -2,8 +2,9 @@
  * CapyAI graphical chat app.
  *
  * A desktop window with the capybara system logo, a scrolling conversation,
- * a text input line and three permission toggle buttons (Escrita / Editar /
- * Deletar) that map to the executor's risk gates. Shares the same brain as
+ * a text input line and three task-scoped permission buttons (Escrita /
+ * Deletar / Sistema) that map to the executor's independent risk gates. Shares
+ * the same brain as
  * the `capyai` terminal command (services/capyai.h + capy-ai-core built into
  * the kernel). Renders directly into the window surface (font + rect fills),
  * so it needs no widget/display-list bridge.
@@ -25,6 +26,7 @@
 #ifdef CAPYOS_HAVE_CAPYAI
 #include "services/capyai.h"
 #include "services/capyai_async.h"
+#include "services/capyai_system_actions.h"
 #endif
 
 #ifdef CAPYOS_CAPYAI_GUI_ASYNC_SMOKE
@@ -54,6 +56,7 @@ struct capyai_chat_dispatch_context {
 };
 
 static struct capyai_chat_dispatch_context g_dispatch_context;
+static int g_dispatch_context_in_use = 0;
 static char *g_capture_buffer = NULL;
 static size_t g_capture_capacity = 0u;
 static size_t g_capture_length = 0u;
@@ -157,11 +160,11 @@ static void capyai_chat_paint(struct gui_window *win) {
 
     /* permission buttons */
     {
-        static const char *const labels[3] = {"Escrita", "Editar", "Deletar"};
+        static const char *const labels[3] = {"Escrita", "Deletar", "Sistema"};
         int on[3];
         on[0] = app->allow_write;
-        on[1] = app->allow_write; /* edit shares the write gate */
-        on[2] = app->allow_delete;
+        on[1] = app->allow_delete;
+        on[2] = app->allow_system;
         for (idx = 0; idx < 3; ++idx) {
             int32_t bx, by, bw, bh;
             chat_button_rect(win, idx, &bx, &by, &bw, &bh);
@@ -297,6 +300,58 @@ static int capyai_chat_dispatch(void *ctx, const char *command_line,
     if (status != DESKTOP_SHELL_DISPATCH_HANDLED) return 127;
     return rc;
 }
+
+struct capyai_chat_typed_operation {
+    struct shell_context *shell;
+    const struct capy_ai_output *tool_call;
+    char *detail;
+    size_t detail_size;
+};
+
+static int chat_action_equal(const char *value, const char *literal) {
+    size_t i = 0u;
+    if (!value || !literal) return 0;
+    while (value[i] && literal[i] && value[i] == literal[i]) ++i;
+    return value[i] == '\0' && literal[i] == '\0';
+}
+
+static int capyai_chat_run_typed_operation(void *opaque) {
+    struct capyai_chat_typed_operation *operation =
+        (struct capyai_chat_typed_operation *)opaque;
+    if (!operation || !operation->shell || !operation->tool_call) return 127;
+    if (chat_action_equal(operation->tool_call->action, "file_create") ||
+        chat_action_equal(operation->tool_call->action, "file_edit_text") ||
+        chat_action_equal(operation->tool_call->action, "file_move")) {
+        return capyai_native_file_dispatch(operation->shell,
+                                           operation->tool_call,
+                                           operation->detail,
+                                           operation->detail_size);
+    }
+    return capyai_native_system_dispatch(operation->shell,
+                                         operation->tool_call,
+                                         operation->detail,
+                                         operation->detail_size);
+}
+
+static int capyai_chat_typed_dispatch(void *ctx,
+                                      const struct capy_ai_output *tool_call,
+                                      char *detail, size_t detail_size) {
+    struct capyai_chat_dispatch_context *dispatch_ctx =
+        (struct capyai_chat_dispatch_context *)ctx;
+    struct capyai_chat_typed_operation operation;
+    int rc = 127;
+    int status;
+    if (!dispatch_ctx || !tool_call || !detail || detail_size == 0u) return 127;
+    operation.shell = &dispatch_ctx->shell;
+    operation.tool_call = tool_call;
+    operation.detail = detail;
+    operation.detail_size = detail_size;
+    detail[0] = '\0';
+    status = kernel_desktop_run_session_operation_scoped(
+        &dispatch_ctx->shell, capyai_chat_run_typed_operation, &operation,
+        1, &rc);
+    return status == DESKTOP_SHELL_DISPATCH_HANDLED ? rc : 127;
+}
 #endif
 
 static void chat_submit(struct capyai_chat_app *app) {
@@ -307,33 +362,47 @@ static void chat_submit(struct capyai_chat_app *app) {
         chat_add_msg(app, CAPYAI_CHAT_ROLE_SYSTEM,
                      "Aguarde o pedido anterior terminar.");
     } else {
-        struct capyai_async_request request;
+        struct capyai_async_request_v2 request;
         int submit_rc;
         chat_zero(&request, sizeof(request));
         if (!g_async_ready && capyai_chat_runtime_init() != 0) {
             chat_add_msg(app, CAPYAI_CHAT_ROLE_SYSTEM,
                          "Servico CapyAI indisponivel nesta sessao.");
-        } else if (kernel_desktop_shell_snapshot(
+        } else if ((chat_zero(&g_dispatch_context,
+                              sizeof(g_dispatch_context)),
+                    kernel_desktop_shell_snapshot(
                        &g_dispatch_context.shell,
-                       &g_dispatch_context.session) != 0) {
+                       &g_dispatch_context.session)) != 0) {
             chat_add_msg(app, CAPYAI_CHAT_ROLE_SYSTEM,
                          "Sessao do terminal indisponivel.");
         } else {
-            chat_strlcpy(request.intent, app->input, sizeof(request.intent));
-            request.perms.allow_write = app->allow_write;
-            request.perms.allow_delete = app->allow_delete;
-            request.perms.allow_system_change = app->allow_system;
-            chat_strlcpy(request.session.last_file, app->last_file,
-                         sizeof(request.session.last_file));
-            request.session.turns = app->turns;
-            request.dispatch = capyai_chat_dispatch;
-            request.dispatch_ctx = &g_dispatch_context;
-            request.client_generation = app->generation;
-            submit_rc = capyai_async_submit(&request, &app->job_id);
+            request.abi_version = CAPYAI_ASYNC_REQUEST_ABI_V2;
+            request.struct_size = (uint32_t)sizeof(request);
+            chat_strlcpy(request.base.intent, app->input,
+                         sizeof(request.base.intent));
+            request.base.perms.allow_write = app->allow_write;
+            request.base.perms.allow_delete = app->allow_delete;
+            request.base.perms.allow_system_change = app->allow_system;
+            chat_strlcpy(request.base.session.last_file, app->last_file,
+                         sizeof(request.base.session.last_file));
+            request.base.session.turns = app->turns;
+            request.base.dispatch = capyai_chat_dispatch;
+            request.base.dispatch_ctx = &g_dispatch_context;
+            request.typed_dispatch = capyai_chat_typed_dispatch;
+            request.typed_dispatch_ctx = &g_dispatch_context;
+            request.base.client_generation = app->generation;
+            submit_rc = capyai_async_submit_v2(&request, &app->job_id);
             if (submit_rc == CAPYAI_ASYNC_OK) {
+                g_dispatch_context_in_use = 1;
                 app->pending = 1;
                 chat_strlcpy(app->pending_intent, app->input,
                              sizeof(app->pending_intent));
+                /* Grants are task-scoped. The request owns the copied values;
+                 * the next task starts fail-closed and must be authorized
+                 * explicitly again by the user. */
+                app->allow_write = 0;
+                app->allow_delete = 0;
+                app->allow_system = 0;
                 chat_add_msg(app, CAPYAI_CHAT_ROLE_SYSTEM, "Processando...");
             } else if (submit_rc == CAPYAI_ASYNC_ERR_BUSY) {
                 chat_add_msg(app, CAPYAI_CHAT_ROLE_SYSTEM,
@@ -342,6 +411,9 @@ static void chat_submit(struct capyai_chat_app *app) {
                 app->job_id = 0u;
                 chat_add_msg(app, CAPYAI_CHAT_ROLE_SYSTEM,
                              "Falha ao iniciar o worker CapyAI.");
+            }
+            if (submit_rc != CAPYAI_ASYNC_OK) {
+                chat_zero(&g_dispatch_context, sizeof(g_dispatch_context));
             }
         }
     }
@@ -416,11 +488,20 @@ void capyai_chat_pump(void) {
     struct capyai_async_response response;
     uint64_t job_id;
     int poll_rc;
-    if (!g_chat.pending || g_chat.job_id == 0u) return;
+    if (!g_chat.pending || g_chat.job_id == 0u) {
+        if (g_dispatch_context_in_use && !capyai_async_busy()) {
+            chat_zero(&g_dispatch_context, sizeof(g_dispatch_context));
+            g_dispatch_context_in_use = 0;
+        }
+        return;
+    }
     job_id = g_chat.job_id;
     chat_zero(&response, sizeof(response));
     poll_rc = capyai_async_poll(job_id, &response);
     if (poll_rc == 0) return;
+
+    chat_zero(&g_dispatch_context, sizeof(g_dispatch_context));
+    g_dispatch_context_in_use = 0;
 
     g_chat.pending = 0;
     g_chat.job_id = 0u;
@@ -505,8 +586,9 @@ static void capyai_chat_window_mouse(struct gui_window *win, int32_t x,
         int32_t bx, by, bw, bh;
         chat_button_rect(win, idx, &bx, &by, &bw, &bh);
         if (x >= bx && x < bx + bw && y >= by && y < by + bh) {
-            if (idx == 0 || idx == 1) app->allow_write = !app->allow_write;
-            else app->allow_delete = !app->allow_delete;
+            if (idx == 0) app->allow_write = !app->allow_write;
+            else if (idx == 1) app->allow_delete = !app->allow_delete;
+            else app->allow_system = !app->allow_system;
             compositor_invalidate(win->id);
             return;
         }
@@ -550,7 +632,7 @@ int capyai_chat_open(void) {
     chat_add_msg(&g_chat, CAPYAI_CHAT_ROLE_SYSTEM,
                  "Ola! Escreva um pedido e tecle Enter.");
     chat_add_msg(&g_chat, CAPYAI_CHAT_ROLE_SYSTEM,
-                 "Botoes liberam escrita/edicao/delecao.");
+                 "Permissoes valem somente para o proximo pedido.");
     if (capyai_chat_runtime_init() != 0) {
         chat_add_msg(&g_chat, CAPYAI_CHAT_ROLE_SYSTEM,
                      "Worker assincrono indisponivel nesta build.");

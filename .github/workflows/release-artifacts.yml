@@ -20,7 +20,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: capyui-release-${{ github.ref }}
+  group: capyui-release
   cancel-in-progress: false
 
 jobs:
@@ -31,20 +31,34 @@ jobs:
       contents: write
     steps:
       - name: Checkout CapyUI
-        uses: actions/checkout@v7
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
 
       - name: Install toolchain
         run: sudo apt-get update && sudo apt-get install -y build-essential make
 
+      - name: Verify release metadata
+        shell: bash
+        run: |
+          version="$(tr -d '\r\n' < VERSION)"
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            test "${{ github.ref_name }}" = "v${version}"
+          fi
+
       - name: Validate and package
+        shell: bash
         run: |
           make validate
-          make package
+          make package-clean
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            make package PUBLISH_TAG="${{ github.ref_name }}"
+          else
+            make package PUBLISH_TAG=latest
+          fi
 
       - name: Upload package artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: capyui-capypkg-${{ github.run_id }}
           path: |
@@ -81,7 +95,7 @@ jobs:
           git push -f origin refs/tags/latest
 
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3
         with:
           tag_name: ${{ steps.tag.outputs.name }}
           name: ${{ steps.tag.outputs.name == 'latest' && 'CapyUI rolling latest' || format('CapyUI {0}', steps.tag.outputs.name) }}

@@ -1,10 +1,10 @@
 # CapyUI — Status atual
 
-Última atualização: 2026-07-12
+Última atualização: 2026-07-15
 
 ## Versão
 
-- **Pacote entregue (commit-side):** `2.24.0` — desktop session com chat CapyAI assíncrono, fechamento/reabertura seguro e renderização não bloqueante. A ABI portátil de widgets permanece 2.22.
+- **Pacote entregue (commit-side):** `2.24.1` — hardening da desktop-session: logout volta ao login, workers não herdam principal, dispatch scoped usa snapshot sanitizado e o primeiro frame é protegido. A ABI portátil de widgets permanece 2.22 e a desktop-session permanece v1.
 - **ABI `capy-ui-widget`:** `2.22` (aditivo sobre 2.21). 14 minors 0.0–0.15 + 1.0 freeze + 1.1–1.10 (todas) + 2.0–2.13 (plugin/advanced widgets/virtualization/undo/theme packs/devtools/display mode/users/contrast/desktop icons/file mgr/icons/wallpaper/login) + **2.14 date picker** + **2.15 color picker** + **2.16 table columns** + **2.17 autocomplete** + **2.18 tree hierarchy** + **2.19 chart dataset** + **2.20 rich-text ranges** + **2.21 canvas draw callback** (estado dos advanced widgets — **8/8 completo**) + **2.22 multi-touch gestures** (pinch/rotate, completando a 1.4) compõem o surface ativo. 1.x continua em **LTS ≥12m pós-2.0**. Deprecation policy ARMADA para minors 2.x (ver ADR-0006).
 - **ABI `capy-ui-desktop-session`:** `1` (entregue em `alpha.241`)
 - **Display-list schema:** **`7`** (bumps 4→5 em v1.5 com `CAPY_DL_DPI_SCOPE`, 5→6 em v1.9 com `CAPY_DL_TRANSFORM_PUSH/POP`, 6→7 em v2.0 com `CAPY_DL_PLUGIN_OP`)
@@ -44,7 +44,7 @@ Nenhum para trabalho portátil. Apenas o adapter CapyOS (v0.7) e shell integrati
 
 ## Métricas (snapshot)
 
-- Testes de contrato: **345** em `tests/test_widget_contracts.c` (97 1.0 + 7 v1.1 + 7 v1.2 + 7 v1.3 + 7 v1.4 + 7 v1.5 + 8 v1.6 + 7 v1.7 + 7 v1.8 + 7 v1.9 + 7 v1.10 + 8 v2.0 + 8 v2.1 + 7 v2.2 + 7 v2.3 + 8 v2.4 + 7 v2.5 + 7 v2.6 + 7 v2.7 + 8 v2.8 + 8 v2.9 + 8 v2.10 + 8 v2.11 + 7 v2.12 + 6 v2.13 + 8 v2.14 + 8 v2.15 + 8 v2.16 + 8 v2.17 + 8 v2.18 + 8 v2.19 + 8 v2.20 + 8 v2.21 + 8 v2.22). Contagem pinada em `make version-check`.
+- Testes de contrato: **348** em `tests/test_widget_contracts.c` (97 1.0 + 7 v1.1 + 7 v1.2 + 7 v1.3 + 7 v1.4 + 7 v1.5 + 8 v1.6 + 7 v1.7 + 7 v1.8 + 7 v1.9 + 7 v1.10 + 8 v2.0 + 8 v2.1 + 7 v2.2 + 7 v2.3 + 8 v2.4 + 7 v2.5 + 7 v2.6 + 7 v2.7 + 8 v2.8 + 8 v2.9 + 8 v2.10 + 8 v2.11 + 7 v2.12 + 6 v2.13 + 8 v2.14 + 8 v2.15 + 8 v2.16 + 8 v2.17 + 8 v2.18 + 8 v2.19 + 8 v2.20 + 8 v2.21 + 8 v2.22). Contagem pinada em `make version-check`.
 - ABI `capy-ui-widget` ativas: 0.0–0.15 (com 0.7 e 0.12 reservadas), 1.0–1.10 (todas, LTS), 2.0–2.21, **2.22 (atual, aditivo)**.
 - ABI `capy-ui-desktop-session` ativas: `1`.
 - Display-list schema: **`7`** (sem mudança em 2.1–2.13; bumps 4→5 em 1.5, 5→6 em 1.9, 6→7 em 2.0).

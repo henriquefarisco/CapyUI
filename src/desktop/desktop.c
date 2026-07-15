@@ -303,8 +303,7 @@ static void menu_action_capyai(void *user_data) {
 
 static void menu_action_logout(void *user_data) {
   (void)user_data;
-  extern void desktop_stop(void);
-  desktop_stop();
+  (void)desktop_request_logout();
 }
 
 static void menu_action_reboot(void *user_data) {
