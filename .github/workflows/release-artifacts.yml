@@ -95,7 +95,7 @@ jobs:
           git push -f origin refs/tags/latest
 
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3
         with:
           tag_name: ${{ steps.tag.outputs.name }}
           name: ${{ steps.tag.outputs.name == 'latest' && 'CapyUI rolling latest' || format('CapyUI {0}', steps.tag.outputs.name) }}
