@@ -122,6 +122,7 @@ Histórico autoritativo das duas ABIs owned por CapyUI (`capy-ui-widget`, `capy-
 | `v2.22.0` | 2026-06-02 | feature (aditivo, pós-2.0; multi-touch — completa a v1.4) | Multi-touch gestures — `capy_gesture_recognizer` ganha tail fields para um 2º dedo (`pinch_min_distance_px` + `touch2_active`/`pinch_emitted`/`rotate_emitted`/`reserved2` + `touch2_id` + `touch2_pos` + `multi_v0` + `multi_start_dist`); passa a emitir `PINCH_IN/OUT` + `ROTATE_CW/CCW` (reservados desde 1.4). Pinch = delta assinado da separação Chebyshev; rotate = sinal do produto vetorial `int64` + significância `|cross|/dot > 27/100`. Sessão de dois dedos one-shot, qualquer END reseta, 3º dedo ignorado. Single-touch inalterado (regressão testada). Zero-float. Macros `2/22/0`, `TAG=0x00021600` (`capy-ui-widget` 2.21 → 2.22, DL schema permanece 7). +8 testes (337→345). |
 | `v2.24.0` | 2026-07-12 | packaging/runtime | Chat CapyAI assíncrono e lifecycle seguro de fechar/reabrir; ABIs e schema inalterados. |
 | `v2.24.1` | 2026-07-15 | security/stability patch | Logout autenticado, worker sem principal herdado, dispatch scoped com snapshot sanitizado e primeiro frame protegido; `capy-ui-widget` 2.22, desktop-session v1 e schema 7 inalterados. |
+| `v2.24.2` | 2026-07-31 | supply-chain hardening | `workflow_dispatch` fail-closed com tag validada, checkout exato, identidade tag/`VERSION` e `PUBLISH_TAG` coerente; GitHub Actions atualizadas e pinadas por SHA. Nenhum código C do payload mudou; `capy-ui-widget` 2.22, desktop-session v1 e schema 7 inalterados. |
 
 ## Regras
 

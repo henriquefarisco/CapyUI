@@ -1,10 +1,10 @@
 # CapyUI — Status atual
 
-Última atualização: 2026-07-15
+Última atualização: 2026-07-31
 
 ## Versão
 
-- **Pacote entregue (commit-side):** `2.24.1` — hardening da desktop-session: logout volta ao login, workers não herdam principal, dispatch scoped usa snapshot sanitizado e o primeiro frame é protegido. A ABI portátil de widgets permanece 2.22 e a desktop-session permanece v1.
+- **Pacote preparado (commit-side):** `2.24.2` — hardening de supply chain: `workflow_dispatch` agora valida o alvo, faz checkout da referência exata e mantém tag, `VERSION`, `PUBLISH_TAG` e proveniência coerentes; as actions continuam pinadas por SHA. Nenhum código C do payload mudou desde 2.24.1. A ABI portátil de widgets permanece 2.22, a desktop-session permanece v1 e o display-list schema permanece 7.
 - **ABI `capy-ui-widget`:** `2.22` (aditivo sobre 2.21). 14 minors 0.0–0.15 + 1.0 freeze + 1.1–1.10 (todas) + 2.0–2.13 (plugin/advanced widgets/virtualization/undo/theme packs/devtools/display mode/users/contrast/desktop icons/file mgr/icons/wallpaper/login) + **2.14 date picker** + **2.15 color picker** + **2.16 table columns** + **2.17 autocomplete** + **2.18 tree hierarchy** + **2.19 chart dataset** + **2.20 rich-text ranges** + **2.21 canvas draw callback** (estado dos advanced widgets — **8/8 completo**) + **2.22 multi-touch gestures** (pinch/rotate, completando a 1.4) compõem o surface ativo. 1.x continua em **LTS ≥12m pós-2.0**. Deprecation policy ARMADA para minors 2.x (ver ADR-0006).
 - **ABI `capy-ui-desktop-session`:** `1` (entregue em `alpha.241`)
 - **Display-list schema:** **`7`** (bumps 4→5 em v1.5 com `CAPY_DL_DPI_SCOPE`, 5→6 em v1.9 com `CAPY_DL_TRANSFORM_PUSH/POP`, 6→7 em v2.0 com `CAPY_DL_PLUGIN_OP`)

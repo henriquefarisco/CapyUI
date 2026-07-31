@@ -2,6 +2,32 @@
 
 Mudanças por release tag, da mais recente para a mais antiga. Cada entrada é imutável após release.
 
+## [2.24.2] — 2026-07-31
+
+**Hardening de supply chain:** torna a publicação manual fail-closed e atualiza
+as actions pinadas sem alterar o código C incluído nos payloads. As ABIs
+`capy-ui-widget` 2.22 e `capy-ui-desktop-session` v1 e o display-list schema 7
+permanecem inalterados.
+
+### Alterado
+
+- O resolver de release recebe dados do evento apenas por variáveis de ambiente
+  e aceita exclusivamente `latest` ou `v<semver>`, bloqueando tags malformadas
+  antes do checkout, build ou publicação.
+- `workflow_dispatch` de uma release semver faz checkout da tag exata, exige
+  identidade entre tag e `VERSION` e reutiliza o mesmo valor em `PUBLISH_TAG` e
+  na GitHub Release. A lane automática de tag push permanece preservada.
+- A proveniência publicada registra o SHA realmente checkoutado.
+- Pins de `actions/checkout`, `github/codeql-action` e
+  `softprops/action-gh-release` foram atualizados e continuam fixados por SHA.
+
+### Compatibilidade
+
+- Nenhum arquivo de implementação em `src/widget`, `src/desktop`, `src/window`
+  ou `src/apps` mudou em relação à 2.24.1. Os `.bin` são reemitidos porque os
+  arquivos determinísticos incluem `VERSION` e a documentação desta release;
+  isso não representa mudança de ABI nem de implementação do payload.
+
 ## [2.24.1] — 2026-07-15
 
 **Hardening de sessão do desktop:** corrige a regressão de build que fazia a
