@@ -1,4 +1,4 @@
-# CapyUI Makefile — 2.24.2 — supply-chain release hardening; ABI capy-ui-widget remains 2.22
+# CapyUI Makefile — 2.25.0 — Software Center integration; widget ABI remains 2.22
 #
 # CapyUI owns and publishes its own capypkg modules. The build does NOT
 # touch CapyOS sources. After the alpha.241 migration the desktop session
@@ -55,6 +55,8 @@ PUBLISH_URL_BASE ?= https://github.com/$(PUBLISH_OWNER)/$(PUBLISH_REPO)/releases
 WIDGET_PKG_NAME := org.capyos.ui.widget-core
 WIDGET_PKG_SUMMARY := CapyUI portable widget primitives (widget + layout + display-list)
 WIDGET_PKG_INSTALL_ROOT := /var/capypkg/$(WIDGET_PKG_NAME)
+WIDGET_PKG_PROVIDES_ABI := capy-ui-widget
+WIDGET_PKG_ABI_VERSION := 2.22
 WIDGET_PKG_DEPENDS :=
 WIDGET_PKG_BIN := $(CAPY_PKG_DIR)/$(WIDGET_PKG_NAME).bin
 WIDGET_PKG_MANIFEST := $(CAPY_PKG_DIR)/$(WIDGET_PKG_NAME).manifest
@@ -62,6 +64,11 @@ WIDGET_PKG_MANIFEST := $(CAPY_PKG_DIR)/$(WIDGET_PKG_NAME).manifest
 DESKTOP_PKG_NAME := org.capyos.ui.desktop-session
 DESKTOP_PKG_SUMMARY := CapyUI desktop session, window manager and bundled apps
 DESKTOP_PKG_INSTALL_ROOT := /var/capypkg/$(DESKTOP_PKG_NAME)
+DESKTOP_PKG_PROVIDES_ABI := capy-ui-desktop-session
+DESKTOP_PKG_ABI_VERSION := 1
+CAPY_PKG_CORE_ABI_MIN := 3
+CAPY_PKG_CORE_ABI_MAX := 3
+CAPY_PKG_KNOWN_GOOD := 1
 DESKTOP_PKG_DEPENDS := $(WIDGET_PKG_NAME)
 DESKTOP_PKG_BIN := $(CAPY_PKG_DIR)/$(DESKTOP_PKG_NAME).bin
 DESKTOP_PKG_MANIFEST := $(CAPY_PKG_DIR)/$(DESKTOP_PKG_NAME).manifest
@@ -90,8 +97,8 @@ test: $(TEST_BIN)
 
 lint:
 	$(CC) $(CPPFLAGS) $(CFLAGS) -fsyntax-only $(SRC_WIDGET)
-	git diff --check
-	test "$(VERSION)" = "2.24.2"
+	git -c core.whitespace=cr-at-eol diff --check
+	test "$(VERSION)" = "2.25.0"
 
 security:
 	$(CC) $(CPPFLAGS) $(CFLAGS) -D_FORTIFY_SOURCE=2 -fstack-protector-strong -fPIE -fsyntax-only $(SRC_WIDGET)
@@ -101,8 +108,8 @@ security:
 # definitions must equal the count of call-sites and both must equal the
 # documented total. Bump this number (and the docs) when adding tests.
 version-check:
-	test "$(VERSION)" = "2.24.2"
-	grep -q "Version: 2.24.2" README.md
+	test "$(VERSION)" = "2.25.0"
+	grep -q "Version: 2.25.0" README.md
 	test "$$(grep -cE '^  test_[a-z0-9_]+\(\);' tests/test_widget_contracts.c)" = "348"
 	test "$$(grep -cE '^static void test_[a-z0-9_]+\(void\)' tests/test_widget_contracts.c)" = "348"
 
@@ -166,6 +173,11 @@ $(WIDGET_PKG_MANIFEST): $(WIDGET_PKG_BIN)
 	  echo "payload_sha256=$$SHA" ; \
 	  echo "payload_size=$$SIZE" ; \
 	  echo "install_root=$(WIDGET_PKG_INSTALL_ROOT)" ; \
+	  echo "provides_abi=$(WIDGET_PKG_PROVIDES_ABI)" ; \
+	  echo "abi_version=$(WIDGET_PKG_ABI_VERSION)" ; \
+	  echo "core_abi_min=$(CAPY_PKG_CORE_ABI_MIN)" ; \
+	  echo "core_abi_max=$(CAPY_PKG_CORE_ABI_MAX)" ; \
+	  echo "known_good=$(CAPY_PKG_KNOWN_GOOD)" ; \
 	  echo "depends=$(WIDGET_PKG_DEPENDS)" ; \
 	  echo "---" ; \
 	} > $@
@@ -194,6 +206,11 @@ $(DESKTOP_PKG_MANIFEST): $(DESKTOP_PKG_BIN)
 	  echo "payload_sha256=$$SHA" ; \
 	  echo "payload_size=$$SIZE" ; \
 	  echo "install_root=$(DESKTOP_PKG_INSTALL_ROOT)" ; \
+	  echo "provides_abi=$(DESKTOP_PKG_PROVIDES_ABI)" ; \
+	  echo "abi_version=$(DESKTOP_PKG_ABI_VERSION)" ; \
+	  echo "core_abi_min=$(CAPY_PKG_CORE_ABI_MIN)" ; \
+	  echo "core_abi_max=$(CAPY_PKG_CORE_ABI_MAX)" ; \
+	  echo "known_good=$(CAPY_PKG_KNOWN_GOOD)" ; \
 	  echo "depends=$(DESKTOP_PKG_DEPENDS)" ; \
 	  echo "---" ; \
 	} > $@

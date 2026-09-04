@@ -44,12 +44,10 @@ Roadmap: see `docs/roadmap/README.md`. Current state: see `docs/roadmap/STATUS.m
 | `capy-ui-widget` | **`v2.22` (additive over 2.21; fase 2.x major completa 14/14; advanced-widget state track complete 8/8; multi-touch gestures (pinch + rotate) since 2.22; 1.x em LTS ≥12m)** | Delivered | `org.capyos.ui.widget-core` | Linked statically by `org.capyos.ui.desktop-session` and any future CapyUI consumer. The 1.0 baseline (= union of pre-1.0 minors 0.0..0.15) was frozen; 1.x minors add fields/APIs without removing or renaming. Deprecation policy in `docs/roadmap/contracts/deprecation-policy.md`. |
 | `capy-ui-desktop-session` | `v1` (delivered in `alpha.241`) | Delivered | `org.capyos.ui.desktop-session` | Consumed by CapyOS `kernel/module_gate.c` via marker `/var/capypkg/org.capyos.ui.desktop-session/installed`. When present, CapyOS activates desktop runtime; when absent, kernel keeps shell-only mode |
 
-Package release `2.24.2` is a supply-chain-only hardening patch over `2.24.1`.
-No C payload implementation source changed under `src/widget`, `src/desktop`,
-`src/window` or `src/apps`: `capy-ui-widget` remains 2.22,
-`capy-ui-desktop-session` remains v1 and display-list schema remains 7. The
-deterministic archives are reissued only because their bundled `VERSION` and
-documentation metadata identify 2.24.2.
+Package release `2.25.0` adds the Software Center to the desktop session while
+preserving `capy-ui-widget` 2.22, `capy-ui-desktop-session` v1 and display-list
+schema 7. The app consumes a host-injected package backend and therefore keeps
+filesystem, networking and signature policy in CapyOS.
 
 The release workflow now treats manual dispatch as fail-closed: an externally
 provided target is carried through an environment variable, validated as
@@ -101,7 +99,7 @@ All 14 pre-1.0 ABI minors (`0.0` through `0.15`, with `0.7` and `0.12` reserved)
 - window manager (dispatcher, focus, lifecycle, snap/maximize/minimize,
   decoration, drag/drop);
 - built-in apps (calculator, file manager, settings, task manager,
-  text editor, terminal frontend);
+  text editor, terminal frontend and Software Center);
 - shell context activation hooks consumed by `auth/login_runtime`;
 - headless apps-basic-roundtrip smoke surface (additive, Etapa 6 / Slice 6.6):
   `apps_smoke_roundtrip_total()` + `apps_smoke_roundtrip_run(index)` (in
@@ -110,10 +108,11 @@ All 14 pre-1.0 ABI minors (`0.0` through `0.15`, with `0.7` and `0.12` reserved)
   `calculator_smoke_roundtrip`) runs an app's primary function headlessly (no
   window/compositor) and returns 0 on success, so the CapyOS in-kernel
   orchestrator can count clean passes and emit `[smoke] apps-basic-roundtrip
-  ready`. Roundtrip set covers all five basic apps (REQUIRED_APPS=5): calculator
+  ready`. Roundtrip set covers all six basic apps (REQUIRED_APPS=6): calculator
   (`calc_eval`), task_manager (`task_iter`/`process_iter` enumeration),
   file_manager (path join/compare/containment helpers), text_editor
-  (`handle_key` buffer edits) and settings (username-policy validator).
+  (`handle_key` buffer edits), settings (username-policy validator) and Software
+  Center (catalog refresh/select/action through an injected backend).
 
 The desktop session **does not** ship its own compositor, fonts,
 framebuffer driver, raw input drivers, theme provider, accessibility
