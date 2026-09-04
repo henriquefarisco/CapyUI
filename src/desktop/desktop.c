@@ -17,6 +17,7 @@
 #include "apps/text_editor.h"
 #include "apps/settings.h"
 #include "apps/task_manager.h"
+#include "apps/software_center.h"
 #include "gui/context_menu.h"
 #include "gui/desktop_icons.h"
 #include "gui/inline_prompt.h"
@@ -274,6 +275,12 @@ static void menu_action_task_manager(void *user_data) {
   register_focused_in_taskbar("Task Manager", "Tasks");
 }
 
+static void menu_action_software_center(void *user_data) {
+  (void)user_data;
+  software_center_open();
+  register_focused_in_taskbar("Software Center", "Software");
+}
+
 /* Etapa 7 / Slice 7.5: o navegador grafico volta ao menu iniciar como
  * adaptador versionado — a acao delega ao hook estavel do CapyOS
  * (kernel_desktop_open_browser_graphical, declarado em
@@ -343,7 +350,7 @@ static int g_menu_show_all = 0;
 static void desktop_menu_apps(struct desktop_menu_app *out, uint32_t cap,
                               uint32_t *count) {
   uint32_t n = 0;
-  if (!out || cap < 8u) { if (count) *count = 0; return; }
+  if (!out || cap < 9u) { if (count) *count = 0; return; }
   out[n].label = APP_T("Arquivos", "Files", "Archivos");
   out[n].action = menu_action_file_manager; out[n].pinned = 1; n++;
   out[n].label = APP_T("Calculadora", "Calculator", "Calculadora");
@@ -356,6 +363,8 @@ static void desktop_menu_apps(struct desktop_menu_app *out, uint32_t cap,
   out[n].action = menu_action_browser; out[n].pinned = 1; n++;
   out[n].label = "CapyAI";
   out[n].action = menu_action_capyai; out[n].pinned = 1; n++;
+  out[n].label = APP_T("Central de Programas", "Software Center", "Centro de Software");
+  out[n].action = menu_action_software_center; out[n].pinned = 1; n++;
   out[n].label = APP_T("Tarefas", "Tasks", "Tareas");
   out[n].action = menu_action_task_manager; out[n].pinned = 0; n++;
   out[n].label = APP_T("Terminal", "Terminal", "Terminal");
@@ -366,12 +375,12 @@ static void desktop_menu_apps(struct desktop_menu_app *out, uint32_t cap,
 static void menu_action_toggle_all(void *user_data);
 
 static void desktop_populate_menu(struct desktop_session *ds) {
-  struct desktop_menu_app apps[8];
+  struct desktop_menu_app apps[9];
   uint32_t app_count = 0;
   uint32_t i;
   if (!ds) return;
   ds->taskbar.menu_entry_count = 0;
-  desktop_menu_apps(apps, 8u, &app_count);
+  desktop_menu_apps(apps, 9u, &app_count);
 
   /* Favoritos fixados (grupo "Pinned"). */
   for (i = 0; i < app_count; i++) {

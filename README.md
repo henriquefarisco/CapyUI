@@ -1,12 +1,12 @@
 # CapyUI
 
-Version: 2.24.2
+Version: 2.25.0
 
 CapyUI owns portable widget primitives and interaction contracts for CapyOS services. As of `1.0.0` the `capy-ui-widget` ABI is **frozen**: minor releases stay additive, breaking changes require a major bump per `docs/roadmap/contracts/deprecation-policy.md`.
 
 ## CapyOS reference version
 
-Pinned for this release: `0.8.0-alpha.315+20260715` (authoritative pin: `docs/compatibility.md`). Since 0.7.0 CapyUI also publishes the `org.capyos.ui.desktop-session` capypkg module (compositor session, window manager, apps) in addition to `org.capyos.ui.widget-core`. Update this together with `docs/compatibility.md` whenever the CapyOS core version, ABI or canonical manifest format changes.
+Pinned for this release: `0.10.0-alpha.1+20260903` (authoritative pin: `docs/compatibility.md`). Since 0.7.0 CapyUI also publishes the `org.capyos.ui.desktop-session` capypkg module (compositor session, window manager, apps) in addition to `org.capyos.ui.widget-core`. Update this together with `docs/compatibility.md` whenever the CapyOS core version, ABI or canonical manifest format changes.
 
 Cross-repo authoritative references:
 

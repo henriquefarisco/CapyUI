@@ -25,9 +25,10 @@
 #include "apps/file_manager.h"
 #include "apps/text_editor.h"
 #include "apps/settings.h"
+#include "apps/software_center.h"
 
 unsigned apps_smoke_roundtrip_total(void) {
-  return 5u; /* calculator, task_manager, file_manager, text_editor, settings */
+  return 6u;
 }
 
 int apps_smoke_roundtrip_run(unsigned index) {
@@ -42,6 +43,8 @@ int apps_smoke_roundtrip_run(unsigned index) {
     return text_editor_smoke_roundtrip();
   case 4u:
     return settings_smoke_roundtrip();
+  case 5u:
+    return software_center_smoke_roundtrip();
   default:
     return -1; /* out of range -> failure */
   }
