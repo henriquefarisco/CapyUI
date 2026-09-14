@@ -94,6 +94,7 @@ $(TEST_BIN): $(SRC_WIDGET) tests/test_widget_contracts.c | $(BUILD_DIR)
 test: $(TEST_BIN)
 	$(TEST_BIN)
 	python3 tests/test_desktop_logout_contract.py
+	python3 -B tests/test_media_player_contract.py
 
 lint:
 	$(CC) $(CPPFLAGS) $(CFLAGS) -fsyntax-only $(SRC_WIDGET)

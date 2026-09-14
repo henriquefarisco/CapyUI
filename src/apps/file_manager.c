@@ -19,6 +19,7 @@
  */
 #include "apps/file_manager.h"
 #include "apps/text_editor.h"
+#include "apps/media_player.h"
 #include "gui/compositor.h"
 #include "gui/font.h"
 #include "gui/widget.h"
@@ -180,10 +181,22 @@ void fm_open_entry(struct file_manager_app *app, int idx) {
     /* Open file in text_editor */
     char path[FM_PATH_MAX];
     fm_join_path(app->current_path, e->name, path, sizeof(path));
-    text_editor_open(path);
-    fm_set_ok_status(app, APP_T("Arquivo aberto no editor",
-                                "File opened in editor",
-                                "Archivo abierto en el editor"));
+    size_t name_len = kstrlen(e->name);
+    int is_wav = name_len >= 4u && e->name[name_len - 4u] == '.' &&
+                 (e->name[name_len - 3u] == 'w' || e->name[name_len - 3u] == 'W') &&
+                 (e->name[name_len - 2u] == 'a' || e->name[name_len - 2u] == 'A') &&
+                 (e->name[name_len - 1u] == 'v' || e->name[name_len - 1u] == 'V');
+    if (is_wav) {
+      (void)media_player_open_path(path);
+      fm_set_ok_status(app, APP_T("Arquivo aberto no reprodutor",
+                                  "File opened in media player",
+                                  "Archivo abierto en el reproductor"));
+    } else {
+      text_editor_open(path);
+      fm_set_ok_status(app, APP_T("Arquivo aberto no editor",
+                                  "File opened in editor",
+                                  "Archivo abierto en el editor"));
+    }
     fm_invalidate_status_bar(app);
   }
 }

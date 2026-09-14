@@ -12,12 +12,13 @@
  * per-app `*_smoke_roundtrip()` functions exercise primary logic only (no
  * window/compositor) and return 0 on success.
  *
- * The roundtrip set covers the five basic desktop apps, each exercising its
+ * The roundtrip set covers the seven basic desktop apps, each exercising its
  * primary logic headlessly (no window/compositor): calculator (calc_eval),
  * task_manager (task_iter/process_iter enumeration), file_manager (path
  * join/compare/containment helpers), text_editor (handle_key buffer edits) and
- * settings (username-policy validator). REQUIRED_APPS on the CapyOS side must
- * match apps_smoke_roundtrip_total().
+ * settings (username-policy validator), software_center (catalog/package
+ * contract) and media_player (bounded playlist). REQUIRED_APPS on the CapyOS
+ * side must match apps_smoke_roundtrip_total().
  */
 #include "apps/apps_smoke.h"
 #include "apps/calculator.h"
@@ -26,9 +27,10 @@
 #include "apps/text_editor.h"
 #include "apps/settings.h"
 #include "apps/software_center.h"
+#include "apps/media_player.h"
 
 unsigned apps_smoke_roundtrip_total(void) {
-  return 6u;
+  return 7u;
 }
 
 int apps_smoke_roundtrip_run(unsigned index) {
@@ -45,6 +47,8 @@ int apps_smoke_roundtrip_run(unsigned index) {
     return settings_smoke_roundtrip();
   case 5u:
     return software_center_smoke_roundtrip();
+  case 6u:
+    return media_player_smoke_roundtrip();
   default:
     return -1; /* out of range -> failure */
   }
