@@ -1,4 +1,4 @@
-# CapyUI Makefile — 2.25.0 — Software Center integration; widget ABI remains 2.22
+# CapyUI Makefile — 2.27.0 — bundled music playlist; widget ABI remains 2.22
 #
 # CapyUI owns and publishes its own capypkg modules. The build does NOT
 # touch CapyOS sources. After the alpha.241 migration the desktop session
@@ -91,14 +91,19 @@ $(TEST_BIN): $(SRC_WIDGET) tests/test_widget_contracts.c | $(BUILD_DIR)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -Isrc/widget $(SRC_WIDGET) tests/test_widget_contracts.c $(LDFLAGS) -o $@
 	chmod 755 $@
 
-test: $(TEST_BIN)
+$(BUILD_DIR)/test_media_path: tests/test_media_path.c src/apps/media_path.h | $(BUILD_DIR)
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_media_path.c $(LDFLAGS) -o $@
+
+test: $(TEST_BIN) $(BUILD_DIR)/test_media_path
 	$(TEST_BIN)
+	$(BUILD_DIR)/test_media_path
 	python3 tests/test_desktop_logout_contract.py
+	python3 -B tests/test_media_player_contract.py
 
 lint:
 	$(CC) $(CPPFLAGS) $(CFLAGS) -fsyntax-only $(SRC_WIDGET)
 	git -c core.whitespace=cr-at-eol diff --check
-	test "$(VERSION)" = "2.25.0"
+	test "$(VERSION)" = "2.27.0"
 
 security:
 	$(CC) $(CPPFLAGS) $(CFLAGS) -D_FORTIFY_SOURCE=2 -fstack-protector-strong -fPIE -fsyntax-only $(SRC_WIDGET)
@@ -108,8 +113,8 @@ security:
 # definitions must equal the count of call-sites and both must equal the
 # documented total. Bump this number (and the docs) when adding tests.
 version-check:
-	test "$(VERSION)" = "2.25.0"
-	grep -q "Version: 2.25.0" README.md
+	test "$(VERSION)" = "2.27.0"
+	grep -q "Version: 2.27.0" README.md
 	test "$$(grep -cE '^  test_[a-z0-9_]+\(\);' tests/test_widget_contracts.c)" = "348"
 	test "$$(grep -cE '^static void test_[a-z0-9_]+\(void\)' tests/test_widget_contracts.c)" = "348"
 

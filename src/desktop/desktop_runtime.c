@@ -11,10 +11,16 @@
 #include "auth/session.h"
 #include "arch/x86_64/kernel_shell_dispatch.h"
 #include "arch/x86_64/kernel_runtime_control.h"
+#include "arch/x86_64/interrupts.h"
 #include "kernel/scheduler.h"
 #include "kernel/task.h"
 #include "net/stack.h"
 #include "services/capyai_system_actions.h"
+#include "audio/audio_service.h"
+#include "apps/media_player.h"
+#ifdef CAPYOS_MEDIA_PLAYER_SMOKE
+#include "kernel/log/klog.h"
+#endif
 #include <stddef.h>
 
 static struct task *g_desktop_task = (struct task *)0;
@@ -356,6 +362,9 @@ static void desktop_mouse_events_smoke_emit_blocked_diagnostic_once(void) {
 
 int desktop_runtime_start(struct shell_context *ctx) {
   struct session_context *previous_session = session_active();
+  uint64_t entry_flags;
+  int audio_runtime_ready;
+  __asm__ volatile("pushfq; popq %0" : "=r"(entry_flags));
   if (g_desktop_active) { fbcon_print("Desktop already running.\n"); return 0; }
   uint32_t *fb = kernel_desktop_get_fb();
   uint32_t w = kernel_desktop_get_width();
@@ -386,7 +395,11 @@ int desktop_runtime_start(struct shell_context *ctx) {
   if (ctx && shell_context_session(ctx)) {
     session_set_active(shell_context_session(ctx));
   }
+  audio_runtime_ready = audio_service_start_worker() == 0;
+  if (!audio_runtime_ready)
+    fbcon_print("Audio disabled: native timer/worker unavailable.\n");
   (void)capyai_chat_runtime_init();
+  compositor_set_service_hook(audio_service_poll);
   net_stack_set_yield_hook(desktop_net_yield);
   scheduler_preempt_disable();
   desktop_present_initial_frame(&g_desktop);
@@ -394,12 +407,19 @@ int desktop_runtime_start(struct shell_context *ctx) {
   fbcon_set_visual_muted(1);
   fbcon_print("[desktop] session started\n");
   g_desktop_active = 1;
+  /* Boot may enter with IF=0. The native timer, IDT, foreground task and
+   * audio worker are now ready; do not depend on a first voluntary task
+   * switch to accidentally enable the timer. Restore caller IF on return. */
+  if (audio_runtime_ready) x64_interrupts_enable();
   if (g_capyai_launch_pending) {
     g_capyai_launch_pending = 0;
     (void)desktop_launch_capyai();
   }
 #ifdef CAPYOS_CAPYAI_GUI_ASYNC_SMOKE
   (void)capyai_chat_smoke_start();
+#endif
+#ifdef CAPYOS_MEDIA_PLAYER_SMOKE
+  (void)media_player_smoke_start();
 #endif
 
   /* Small state machine to distinguish a bare ESC press (exit desktop)
@@ -426,9 +446,21 @@ int desktop_runtime_start(struct shell_context *ctx) {
      * unicos lugares onde o capygfx roda -- sempre entre frames, com o
      * compositor quiescente. IRQs continuam habilitados (input nao perde
      * eventos; so a troca de contexto e adiada). */
-    scheduler_preempt_disable();
-
+    /* Background work includes synchronous encrypted storage I/O. Keep it
+     * outside the compositor guard so the dedicated audio pump can preempt
+     * it. The compositor is quiescent here, as at the existing frame yield. */
+#ifdef CAPYOS_MEDIA_PLAYER_SMOKE
+    if (g_desktop_smoke_diag_iter_count < 2u) klog(KLOG_INFO, "[audio-ui] before background");
+#endif
     x64_kernel_runtime_poll_background();
+#ifdef CAPYOS_MEDIA_PLAYER_SMOKE
+    if (g_desktop_smoke_diag_iter_count < 2u) klog(KLOG_INFO, "[audio-ui] after background");
+#endif
+    scheduler_preempt_disable();
+    /* Same owner as media-player actions; acknowledge HDA completions even
+     * without input/window damage. This is cooperative, never IRQ work. */
+    audio_service_poll();
+    media_player_poll();
 
     while (kernel_input_trygetc(&ch)) {
       had_activity = 1;
@@ -487,6 +519,9 @@ int desktop_runtime_start(struct shell_context *ctx) {
        * them to wait for a bounded, observable result. */
       if (capyai_system_actions_pump() > 0) had_activity = 1;
       if (desktop_run_frame(&g_desktop)) had_activity = 1;
+#ifdef CAPYOS_MEDIA_PLAYER_SMOKE
+      media_player_smoke_note_frame();
+#endif
 #ifdef CAPYOS_CAPYAI_GUI_ASYNC_SMOKE
       capyai_chat_smoke_note_frame();
 #endif
@@ -538,6 +573,7 @@ int desktop_runtime_start(struct shell_context *ctx) {
     acpi_shutdown();
   }
 
+  if (!(entry_flags & (1u << 9))) x64_interrupts_disable();
   return 0;
 }
 
@@ -548,5 +584,15 @@ int desktop_capyai_gui_async_smoke_run(void) {
   session_reset(&session);
   shell_context_init(&shell, &session, NULL);
   return desktop_runtime_start(&shell);
+}
+#endif
+#ifdef CAPYOS_MEDIA_PLAYER_SMOKE
+int desktop_media_player_smoke_run(void) {
+  struct session_context session;
+  struct shell_context shell;
+  session_reset(&session);
+  shell_context_init(&shell, &session, NULL);
+  if (desktop_runtime_start(&shell) != 0) return -1;
+  return media_player_smoke_result();
 }
 #endif
