@@ -16,6 +16,36 @@ and must not call CapyOS compositor internals directly.
 
 ## CapyOS reference version
 
+Development checkpoint 2.27.0 adds discovery of the three optional `/Music/Capy
+*.ogg` preset tracks when opening an empty Media Player. Existing queues are
+preserved, the first track is selected, and opening the player never autoplays.
+No widget/desktop package ABI changes. The coordinated kernel supplies these
+files and a bounded 40 MiB decoded-PCM budget for the full-length recordings.
+Published pins remain unchanged pending the coordinated release gates.
+
+Local coordinated Etapa 10 acceptance (2026-10-02): version 2.26.0 passed
+`make validate`, kernel player/meter tests and captured OGG/WAV playback on
+QEMU and VMware. See the consumer's
+[`etapa10-acceptance-20261002.md`](../../CapyOS/docs/operations/etapa10-acceptance-20261002.md).
+This does not promote published package pins or authorize a release.
+
+Development checkpoint 2.26.0 adds stereo PCM peak meters to Media Player.
+The kernel adapter must provide `audio_service_get_app_levels`: bounded 256-frame
+source peaks with current app/global gain, zero when idle, range 0..32768.
+The existing status structure and widget/desktop package ABIs are unchanged.
+This source-level API requires the coordinated Etapa 10 kernel checkout; old
+kernel adapters cannot link this desktop source without that additive getter.
+The published known-good package pins below are not changed by this checkpoint.
+
+Development checkpoint 2.25.1 (Etapa 10): File Manager recognizes `.wav` and
+`.ogg` case-insensitively and routes both to Media Player. The audio runtime
+requires CapyCodecs 0.1.1 for Ogg/Vorbis and currently accepts 48 kHz mono/stereo
+S16 output. This routing change preserves widget/desktop ABIs. Host validation
+passed; the mixed Ogg/WAV desktop playlist gate also passed in QEMU/HDA and
+VMware/HDA with progress, auto-advance and guarded-DMA checks. Evidence:
+`CapyOS/docs/operations/audio-ogg-validation-20260929.md`. It does not
+change the published stable package set.
+
 - CapyOS core pinned for this contract: `0.8.0-alpha.315+20260715`.
 - Authoritative cross-repo matrix: [`CapyOS/docs/reference/integration/compatibility-matrix.md`](../../CapyOS/docs/reference/integration/compatibility-matrix.md).
 - Canonical manifest format consumed by the in-tree adapter: [`CapyOS/docs/reference/integration/capypkg-publisher-manifest-format.md`](../../CapyOS/docs/reference/integration/capypkg-publisher-manifest-format.md).
